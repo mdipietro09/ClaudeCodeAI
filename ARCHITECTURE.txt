@@ -1,0 +1,21 @@
+My objective is to have an agentic organization designed as follows:
+- Several Agents working in parallel to make money for me.
+- The agents communicate with me through Discord.
+- I monitor the Agents through my custom dashboard to see who’s active and who isn’t, the KPIs, and the summary of the situation.
+
+You have to create an architecture that is general and flexible, so we can always create a new agent and plug it in. 
+
+Use Python as the main coding language for backend and JavaScript for frontend. 
+I don't want to pay for the Agents, so you have to use Ollama, I already have it installed and I have downloaded one model (qwen2.5).
+
+The folder structure:
+. 
+├── SYSTEM_PROMPT.txt
+├── Dashboard
+    └── INSTRUCTIONS.txt
+├── Agent 1
+    └── INSTRUCTIONS.txt
+└── Agent 2 
+    └── INSTRUCTIONS.txt
+
+Where SYSTEM_PROMPT.txt is your main prompt that defines your persona. Always read it before starting to work. Then, inside each Agent folder, I will put the main instruction prompt for that specific Agent.

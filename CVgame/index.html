@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mauro's CV</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#0b0d18;font-family:'Segoe UI',system-ui,sans-serif;color:#fff}
+  #game{display:block;width:100vw;height:100vh}
+
+  /* ── HUD ── */
+  #hud{position:fixed;top:0;left:0;right:0;padding:14px 18px;display:flex;justify-content:space-between;
+       align-items:flex-start;pointer-events:none;z-index:5}
+  .hud-card{background:rgba(10,12,24,.6);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);
+            border-radius:10px;padding:8px 14px}
+  #title{font-size:.95rem;font-weight:700;letter-spacing:.04em}
+  #title small{display:block;font-weight:400;color:#9aa;font-size:.7rem;margin-top:2px}
+  #progressWrap{min-width:220px}
+  #progressLabel{font-size:.7rem;color:#9aa;margin-bottom:5px;display:flex;justify-content:space-between}
+  #progressBar{height:6px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden}
+  #progressFill{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#7c6af7,#4ecdc4);transition:width .3s}
+
+  /* ── Hint ── */
+  #hint{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:5;
+        background:rgba(10,12,24,.6);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);
+        border-radius:99px;padding:9px 20px;font-size:.8rem;color:#cdd;pointer-events:none;
+        display:flex;gap:16px;align-items:center}
+  .key{display:inline-block;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 8px;
+       font-family:monospace;font-size:.78rem;margin:0 2px}
+
+  /* ── Info panel ── */
+  #panel{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+         background:rgba(5,6,14,.72);backdrop-filter:blur(4px)}
+  #panel.show{display:flex;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .card{width:min(520px,90vw);max-height:85vh;overflow:auto;background:#15172a;border:1px solid rgba(255,255,255,.14);
+        border-radius:16px;padding:0;box-shadow:0 30px 90px rgba(0,0,0,.6);animation:pop .3s cubic-bezier(.2,1.2,.4,1)}
+  @keyframes pop{from{transform:scale(.9) translateY(20px);opacity:0}to{transform:none;opacity:1}}
+  .card-banner{padding:22px 26px;border-radius:16px 16px 0 0;position:relative;overflow:hidden;
+               background-size:cover;background-position:center}
+  .card-banner::after{content:'';position:absolute;inset:0;
+               background:linear-gradient(to top,rgba(10,12,24,.78) 0%,rgba(10,12,24,.25) 55%,rgba(10,12,24,.05) 100%)}
+  .card-banner>*{position:relative;z-index:1}
+  .card-banner .flag{font-size:2.2rem}
+  .card-banner h2{font-size:1.4rem;margin-top:4px;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+  .card-banner .yr{color:rgba(255,255,255,.92);font-size:.8rem;font-weight:600;letter-spacing:.05em;margin-top:2px;
+                   text-shadow:0 1px 5px rgba(0,0,0,.6)}
+  .card-body{padding:22px 26px}
+  .role{font-size:1.05rem;font-weight:700;color:#fff}
+  .org{color:#4ecdc4;font-size:.85rem;margin:3px 0 16px}
+  .card-body ul{list-style:none;display:flex;flex-direction:column;gap:10px}
+  .card-body li{font-size:.86rem;line-height:1.5;color:#c6c8da;padding-left:22px;position:relative}
+  .card-body li::before{content:'▸';position:absolute;left:0;color:#7c6af7}
+  .skills-label{margin-top:18px;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8a8db0}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:.7rem;padding:3px 10px;border-radius:99px;background:rgba(124,106,247,.18);color:#b3a7ff}
+  .card-foot{padding:14px 26px 22px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .btn{border:none;cursor:pointer;font-size:.82rem;font-weight:600;padding:9px 18px;border-radius:9px;transition:.2s}
+  .btn-primary{background:#7c6af7;color:#fff}.btn-primary:hover{background:#8d7dff}
+  .btn-ghost{background:transparent;color:#9aa;border:1px solid rgba(255,255,255,.16)}
+  .btn-ghost:hover{color:#fff;border-color:#fff}
+
+  /* ── Intro ── */
+  #intro{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;
+         justify-content:center;text-align:center;background:radial-gradient(circle at 50% 35%,#1a1d3a,#0b0d18);gap:18px}
+  #intro h1{font-size:2.4rem;letter-spacing:.02em;background:linear-gradient(90deg,#7c6af7,#4ecdc4);
+            -webkit-background-clip:text;background-clip:text;color:transparent}
+  #intro p{color:#aab;max-width:440px;line-height:1.6;font-size:.95rem}
+  #intro .cities{display:flex;gap:14px;margin:6px 0;flex-wrap:wrap;justify-content:center}
+  #intro .city-chip{font-size:.85rem;padding:6px 14px;border:1px solid rgba(255,255,255,.16);border-radius:99px}
+  .avatar-opt{background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.12);border-radius:14px;
+              padding:10px 14px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+              gap:4px;transition:.18s;color:#aab;font-size:.78rem}
+  .avatar-opt:hover{border-color:rgba(124,106,247,.6);transform:translateY(-2px)}
+  .avatar-opt.selected{border-color:#7c6af7;background:rgba(124,106,247,.15);color:#fff}
+  #startBtn{margin-top:8px;background:#7c6af7;color:#fff;border:none;padding:13px 34px;border-radius:11px;
+            font-size:1rem;font-weight:700;cursor:pointer;transition:.2s}
+  #startBtn:hover:not(:disabled){background:#8d7dff;transform:translateY(-2px)}
+  #startBtn:disabled{opacity:.4;cursor:not-allowed}
+  @media(max-width:560px){#hint .desk{display:none}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-card" id="title">— <small>Career Quest</small></div>
+  <div class="hud-card" id="progressWrap">
+    <div id="progressLabel"><span>Journey</span><span id="progressPct">0%</span></div>
+    <div id="progressBar"><div id="progressFill"></div></div>
+  </div>
+</div>
+
+<!-- Hint -->
+<div id="hint">
+  <span class="desk"><span class="key">←</span><span class="key">→</span> move &nbsp; <span class="key">Space</span> jump</span>
+  <span class="mob" style="display:none">Tap left / right side to move</span>
+  <span>Walk into a city to explore it</span>
+</div>
+
+<!-- Info panel -->
+<div id="panel">
+  <div class="card">
+    <div class="card-banner" id="cardBanner">
+      <div class="flag" id="cardFlag"></div>
+      <h2 id="cardCity"></h2>
+      <div class="yr" id="cardYear"></div>
+    </div>
+    <div class="card-body">
+      <div class="role" id="cardRole"></div>
+      <div class="org" id="cardOrg"></div>
+      <ul id="cardBullets"></ul>
+      <div class="skills-label">Skills Unlocked</div>
+      <div class="tags" id="cardTags"></div>
+    </div>
+    <div class="card-foot">
+      <button class="btn btn-ghost" onclick="closePanel()">Keep walking →</button>
+      <span id="cardNav" style="font-size:.72rem;color:#778"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Intro FROM HERE -->
+<div id="intro">
+  <h1>Mauro Di Pietro</h1>
+  <p>AI Engineer, Data Scientist, Writer, Content Creator.</p>
+  <p>Explore my interactive CV<br>and relive every chapter of my career across the world.</p>
+  <div class="cities">
+    <span class="city-chip">🇬🇧 London</span>
+    <span class="city-chip">🇮🇹 Milan</span>
+    <span class="city-chip">🇭🇰 Hong Kong</span>
+    <span class="city-chip">🇨🇳 Shanghai</span>
+    <span class="city-chip">🇹🇷 Istanbul</span>
+  </div>
+
+  <div style="margin-top:6px">
+    <div style="font-size:.78rem;color:#9aa;margin-bottom:10px;letter-spacing:.04em">CHOOSE YOUR PLAYER</div>
+    <div id="avatarChoices" style="display:flex;gap:16px;justify-content:center">
+      <button class="avatar-opt" data-gender="female">
+        <canvas width="80" height="120"></canvas>
+      </button>
+      <button class="avatar-opt" data-gender="male">
+        <canvas width="80" height="120"></canvas>
+      </button>
+    </div>
+  </div>
+
+  <button id="startBtn" disabled>▶ Start the journey</button>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  CV data
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const TRAVELLER_NAME = "Mauro";
+
+const CITIES = [
+  {
+    type:'london', flag:'🇬🇧', city:'London', year:'2015 – 2016',
+    color:'#3d5a80', sky:['#98c1d9','#5c7a99'],
+    role:'Consultant', org:'Wolters Kluwer · Tagetik Software',
+    bullets:[
+      'First client facing job - Corporate Finance and Private Equity.',
+      'Started working with SQL Databases, Analytics, Machine Learning, and Python.',
+      'Learned customer management, enterprise software, business modeling.'
+    ],
+    tags:['Finance','Programming','Data Science']
+  },
+  {
+    type:'milan', flag:'🇮🇹', city:'Milan', year:'2017 – 2022',
+    color:'#c44536', sky:['#f4a261','#e76f51'],
+    role:'Data Scientist', org:'Intesa Sanpaolo Bank',
+    bullets:[
+      'Moved back to Italy to join one of the largest banks in EU as a Full-Stack developer.',
+      '5+ years of hands-on Machine Learning, AI engineering, end-to-end Data Science projects with production deployment.',
+      'From Junior to Team Leader, led strategic sensitive projects, reported to CEO team.'
+    ],
+    tags:['Team Management','AI Engineering','End-to-End Delivery']
+  },
+  { 
+    type:'covid', flag:'🦠', city:'Lockdown', year:'2020', 
+    color:'#555555', sky:['#2b2b2b','#4a4a4a'], 
+    role:'Content Creator & Writer', org:'Remote Working', 
+    bullets:[
+      'Started writing coding tutorial for TowardsDataScience - 50+ articles and top author on Medium.',
+      'Co-founded Datapizza, generated engagement, built Italy tech community - 200k+ followers.', 
+      'Started coaching startups.'
+    ], 
+    tags:['Entrepreneurship','Engagement','Technical writing'] 
+  },
+  {
+    type:'hongkong', flag:'🇭🇰', city:'Hong Kong', year:'2022 – 2024',
+    color:'#2a9d8f', sky:['#264653','#2a9d8f'],
+    role:'Lead Data Scientist', org:'Intesa Sanpaolo · Asia',
+    bullets:[
+      'Relocated to lead digital transformation across Corporate Investment Banking branches.',
+      'Worked with the CFO to apply AI and acted cross-functional (tech, compliance, business).',
+      'A new market, new pace, new language - learned Mandarin Chinese.'
+    ],
+    tags:['Mandarin Chinese','GenAI','LLM']
+  },
+  {
+    type:'shanghai', flag:'🇨🇳', city:'Shanghai', year:'2024 – 2026',
+    color:'#e63946', sky:['#1d3557','#457b9d'],
+    role:'IT & Cybersecurity', org:'Intesa Sanpaolo · China',
+    bullets:[
+      'Relocated to China to enhance cybersecurity using autonomous Agents - the only foreigner in a full-chinese team.',
+      'Ensured strict adherence to AI governance, data privacy, legal & compliance.',
+      'Learned how to implement security controls and prepare business continuty emergency plans.'
+    ],
+    tags:['Cybersecurity','Agents','IT Infrastructure Management']
+  },
+  {
+    type:'istanbul', flag:'🇹🇷', city:'Istanbul', year:'2026 – Now',
+    color:'#f4a261', sky:['#6d597a','#b56576'],
+    role:'IT & Cybersecurity', org:'Intesa Sanpaolo · Middle East',
+    bullets:[
+      'Relocated to Middle East in the hottest time - war and terrorist attack right outside the office.',
+      'Managing IT Infrastructure, hardware, security, disaster recovery.',
+      'Engaging stakeholders to drive data workflows across Middle East divisions.'
+    ],
+    tags:['Data Center','Architecture','Agentic Workflows']
+  },
+];
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const canvas = document.getElementById('game');
+let ctx = canvas.getContext('2d');   // swappable so landmark art can be rendered onto offscreen canvases too
+let W, H, DPR;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W*DPR; canvas.height = H*DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize); resize();
+
+// World layout
+const GROUND_H = 90;            // ground thickness
+const SEGMENT  = 520;           // distance between cities
+const START_X  = 400;
+const WORLD_W  = START_X + SEGMENT*(CITIES.length-1) + 600;
+CITIES.forEach((c,i)=> c.x = START_X + i*SEGMENT);
+
+// Player
+const player = {
+  x: 120, y: 0, vx:0, vy:0, w:26, h:46,
+  onGround:true, facing:1, walkPhase:0, speed:4.2
+};
+function groundY(){ return H - GROUND_H; }
+
+// Camera
+let camX = 0;
+
+// Input
+const keys = {};
+addEventListener('keydown', e=>{
+  if(['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key)) e.preventDefault();
+  keys[e.key]=true;
+  if(e.key==='Escape') closePanel();
+});
+addEventListener('keyup', e=> keys[e.key]=false);
+
+// Touch controls
+let touchDir = 0;
+function touchStart(e){
+  const t = e.touches[0]; if(!t) return;
+  if(t.clientX < W/2){ touchDir=-1; } else { touchDir=1; }
+}
+function touchEnd(){ touchDir=0; }
+canvas.addEventListener('touchstart', touchStart, {passive:true});
+canvas.addEventListener('touchend', touchEnd);
+canvas.addEventListener('touchcancel', touchEnd);
+if('ontouchstart' in window){
+  document.querySelector('.mob').style.display='inline';
+  document.querySelector('.desk').style.display='none';
+}
+
+// State
+let started = false;
+let playerGender = null;
+let panelOpen = false;
+let activeCity = null;
+const visited = new Set();
+
+// ── Helpers for drawing ──
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ── Landmark renderers (drawn in world space, base at ground line) ──
+function drawLondon(x, g){
+  // Big Ben (Elizabeth Tower) + a slice of Parliament
+  const tx=x;
+  ctx.fillStyle='#9a8a6a';
+  // parliament block behind
+  ctx.fillStyle='#7d8a99'; ctx.fillRect(tx+30,g-120,110,120);
+  for(let wx=tx+40; wx<tx+135; wx+=16)
+    for(let wy=g-110; wy<g-10; wy+=20){ ctx.fillStyle='#5a6675'; ctx.beginPath();
+      ctx.arc(wx+5,wy+10,5,Math.PI,0); ctx.rect(wx,wy+10,10,8); ctx.fill(); }
+  // small towers on parliament roof
+  ctx.fillStyle='#7d8a99';
+  for(let i=0;i<3;i++) ctx.fillRect(tx+45+i*38,g-138,12,20);
+  // tower shaft
+  ctx.fillStyle='#b3a079'; ctx.fillRect(tx-22,g-230,44,230);
+  // clock face
+  ctx.fillStyle='#f4ecd0'; ctx.beginPath(); ctx.arc(tx,g-200,15,0,7); ctx.fill();
+  ctx.strokeStyle='#3a3326'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(tx,g-200); ctx.lineTo(tx,g-210); ctx.moveTo(tx,g-200); ctx.lineTo(tx+8,g-200); ctx.stroke();
+  // belfry + spire
+  ctx.fillStyle='#9a8a6a'; ctx.fillRect(tx-24,g-250,48,22);
+  ctx.fillStyle='#6e8b3d';
+  ctx.beginPath(); ctx.moveTo(tx-24,g-250); ctx.lineTo(tx+24,g-250); ctx.lineTo(tx,g-300); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f4d35e'; ctx.beginPath(); ctx.arc(tx,g-302,4,0,7); ctx.fill();
+}
+function drawMilan(x, g){
+  // Duomo di Milano — white Gothic cathedral bristling with spires
+  const cx=x;
+  ctx.fillStyle='#e8e3d3';
+  // main facade
+  rr(cx-90,g-130,180,130,4); ctx.fill();
+  // big central gable
+  ctx.beginPath(); ctx.moveTo(cx-60,g-130); ctx.lineTo(cx+60,g-130); ctx.lineTo(cx,g-185); ctx.closePath(); ctx.fill();
+  // doors / windows (pointed Gothic arches)
+  ctx.fillStyle='#b8b29c';
+  for(let i=-1;i<=1;i++){ const dx=cx+i*44;
+    ctx.beginPath(); ctx.moveTo(dx-12,g); ctx.lineTo(dx-12,g-50); ctx.lineTo(dx,g-66);
+    ctx.lineTo(dx+12,g-50); ctx.lineTo(dx+12,g); ctx.closePath(); ctx.fill(); }
+  // forest of spires
+  ctx.fillStyle='#ddd7c4';
+  const spires=[-78,-52,-26,26,52,78];
+  spires.forEach(off=>{
+    const h=40+Math.abs(off)*0.25;
+    ctx.beginPath(); ctx.moveTo(cx+off-6,g-130); ctx.lineTo(cx+off+6,g-130);
+    ctx.lineTo(cx+off,g-130-h); ctx.closePath(); ctx.fill();
+  });
+  // tallest central spire with golden Madonnina
+  ctx.beginPath(); ctx.moveTo(cx-9,g-185); ctx.lineTo(cx+9,g-185); ctx.lineTo(cx,g-250); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f4d35e'; ctx.beginPath(); ctx.arc(cx,g-254,4,0,7); ctx.fill();
+}
+function drawCovid(x, g){ 
+  const cx=x; 
+  ctx.fillStyle='#3a2e28'; 
+  ctx.fillRect(cx-40,g-70,80,70); 
+  ctx.fillStyle = '#c44536'; 
+  ctx.beginPath(); ctx.moveTo(cx-50,g-70); ctx.lineTo(cx+50,g-70); ctx.lineTo(cx,g-110); ctx.closePath(); ctx.fill(); 
+  ctx.fillStyle='#87ceeb'; ctx.fillRect(cx-15,g-45,30,25); 
+  ctx.save(); 
+  ctx.translate(cx,g-30); ctx.scale(0.4,0.4); drawAvatar(ctx, playerGender || 'female', 0, 46); 
+  ctx.restore(); 
+}
+function drawHongKong(x,g){
+  // dense skyline of glass towers + a peak behind
+  const cols=['#1f6f6a','#26867f','#155e59','#2a9d8f'];
+  const base=x-150;
+  for(let i=0;i<8;i++){
+    const bw=26+ (i%3)*6, bh=90+ ((i*53)%140);
+    const bx=base+i*38;
+    ctx.fillStyle=cols[i%cols.length];
+    ctx.fillRect(bx,g-bh,bw,bh);
+    // windows
+    ctx.fillStyle='rgba(255,255,255,.25)';
+    for(let wy=g-bh+8; wy<g-8; wy+=14)
+      for(let wx=bx+4; wx<bx+bw-4; wx+=9) ctx.fillRect(wx,wy,4,7);
+  }
+  // antenna on tallest
+  ctx.strokeStyle='#9affff'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(base+3*38+13,g-230); ctx.lineTo(base+3*38+13,g-200); ctx.stroke();
+}
+function drawShanghai(x,g){
+  // Oriental Pearl tower + Pudong skyline
+  const cx=x;
+  // pearl tower
+  ctx.strokeStyle='#d98a9a'; ctx.lineWidth=8;
+  ctx.beginPath(); ctx.moveTo(cx, g); ctx.lineTo(cx, g-200); ctx.stroke();
+  ctx.fillStyle='#e63946';
+  ctx.beginPath(); ctx.arc(cx, g-150, 26,0,7); ctx.fill();       // lower sphere
+  ctx.beginPath(); ctx.arc(cx, g-205, 18,0,7); ctx.fill();       // upper sphere
+  ctx.fillStyle='#ffd6dd';
+  ctx.beginPath(); ctx.arc(cx, g-150, 14,0,7); ctx.fill();
+  // spire
+  ctx.strokeStyle='#e63946'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(cx,g-223); ctx.lineTo(cx,g-250); ctx.stroke();
+  // bottle-opener tower (SWFC) beside
+  ctx.fillStyle='#457b9d';
+  ctx.beginPath(); ctx.moveTo(cx+70,g); ctx.lineTo(cx+110,g); ctx.lineTo(cx+96,g-210);
+  ctx.lineTo(cx+84,g-210); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#0b0d18';
+  ctx.beginPath(); ctx.arc(cx+90,g-195,12,0,Math.PI); ctx.fill();
+  // a couple of plain towers
+  ctx.fillStyle='#1d3557';
+  ctx.fillRect(cx-90,g-150,34,150);
+  ctx.fillRect(cx-140,g-110,34,110);
+}
+function drawIstanbul(x,g){
+  // grand mosque: central dome, half-domes, minarets
+  const cx=x;
+  ctx.fillStyle='#d98c5f';
+  // base building
+  rr(cx-80,g-70,160,70,6); ctx.fill();
+  // central dome
+  ctx.beginPath(); ctx.arc(cx,g-70,52,Math.PI,0); ctx.fill();
+  // side half-domes
+  ctx.beginPath(); ctx.arc(cx-50,g-70,26,Math.PI,0); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+50,g-70,26,Math.PI,0); ctx.fill();
+  // finial
+  ctx.strokeStyle='#f4d35e'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(cx,g-122); ctx.lineTo(cx,g-138); ctx.stroke();
+  ctx.fillStyle='#f4d35e'; ctx.beginPath(); ctx.arc(cx,g-140,4,0,7); ctx.fill();
+  // minarets
+  ctx.fillStyle='#caa472';
+  [-100,100].forEach(off=>{
+    ctx.fillRect(cx+off-5,g-180,10,180);
+    ctx.beginPath(); ctx.moveTo(cx+off-9,g-180); ctx.lineTo(cx+off+9,g-180);
+    ctx.lineTo(cx+off,g-205); ctx.closePath(); ctx.fill();
+  });
+}
+const LANDMARKS = {london:drawLondon, milan:drawMilan, covid:drawCovid, hongkong:drawHongKong, shanghai:drawShanghai, istanbul:drawIstanbul};
+
+// ── Avatar sprite (reusable: in-game + intro previews) ──
+// Draws an avatar centred at the current origin, feet at +h/2.
+function drawAvatar(c, gender, legSwing, h){
+  const bodyColor = gender==='female' ? '#e76f8e' : '#7c6af7';
+  const armColor  = gender==='female' ? '#cf5d7a' : '#6a59d6';
+  // legs
+  c.strokeStyle='#2b2d42'; c.lineWidth=5; c.lineCap='round';
+  c.beginPath(); c.moveTo(-2,8); c.lineTo(-2+legSwing,h/2); c.stroke();
+  c.beginPath(); c.moveTo(2,8);  c.lineTo(2-legSwing,h/2);  c.stroke();
+  // body — skirt (triangle) for female, tunic (rect) for male
+  c.fillStyle=bodyColor;
+  if(gender==='female'){
+    c.beginPath(); c.moveTo(-7,-10); c.lineTo(7,-10); c.lineTo(13,12); c.lineTo(-13,12); c.closePath(); c.fill();
+  } else {
+    roundRectPath(c,-9,-10,18,22,5); c.fill();
+  }
+  // backpack
+  c.fillStyle='#4ecdc4'; roundRectPath(c,-13,-6,7,14,3); c.fill();
+  // arm
+  c.strokeStyle=armColor; c.lineWidth=4;
+  c.beginPath(); c.moveTo(4,-4); c.lineTo(7-legSwing*0.6,8); c.stroke();
+  // head
+  c.fillStyle='#ffd9b3'; c.beginPath(); c.arc(2,-18,8,0,7); c.fill();
+  // hair — long for female, short for male
+  c.fillStyle='#3a2e28';
+  if(gender==='female'){
+    c.beginPath(); c.arc(2,-19,9,Math.PI,0); c.fill();          // top
+    c.beginPath(); rr2(c,-7,-19,5,18); c.fill();                // left length
+    c.beginPath(); rr2(c,6,-19,5,18); c.fill();                 // right length
+  } else {
+    c.beginPath(); c.arc(2,-20,8,Math.PI,0); c.fill();
+  }
+}
+// path helpers usable on any context
+function roundRectPath(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function rr2(c,x,y,w,h){ c.rect(x,y,w,h); }
+
+function drawPlayer(){
+  const g = groundY();
+  const px = player.x - camX;
+  // origin sits so the feet (legs reach +player.h/2) rest on the ground line;
+  // player.y is the jump offset (0 = grounded, negative = airborne)
+  const py = g - player.h/2 + player.y;
+  ctx.save();
+  ctx.translate(px, py);
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath(); ctx.ellipse(0, player.h/2+4, 16, 5, 0,0,7); ctx.fill();
+  ctx.scale(player.facing,1);
+  const legSwing = Math.sin(player.walkPhase) * (Math.abs(player.vx)>0.4?8:0);
+  drawAvatar(ctx, playerGender, legSwing, player.h);
+  ctx.restore();
+}
+
+// ── Background ──
+function lerpColor(a,b,t){
+  const pa=a.match(/\w\w/g).map(h=>parseInt(h,16));
+  const pb=b.match(/\w\w/g).map(h=>parseInt(h,16));
+  const r=pa.map((v,i)=>Math.round(v+(pb[i]-v)*t));
+  return `rgb(${r[0]},${r[1]},${r[2]})`;
+}
+function currentSky(){
+  // blend sky based on nearest cities to player
+  let i=0;
+  for(let k=0;k<CITIES.length;k++) if(player.x > CITIES[k].x-SEGMENT/2) i=k;
+  const a=CITIES[i], b=CITIES[Math.min(i+1,CITIES.length-1)];
+  const span = (b.x-a.x)||1;
+  const t = Math.max(0,Math.min(1,(player.x-a.x)/span));
+  return [ lerpColor(a.sky[0].slice(1), b.sky[0].slice(1), t),
+           lerpColor(a.sky[1].slice(1), b.sky[1].slice(1), t) ];
+}
+const stars = Array.from({length:120},()=>({x:Math.random()*WORLD_W, y:Math.random()*0.5, r:Math.random()*1.4+0.3}));
+
+function drawBackground(){
+  const [c1,c2]=currentSky();
+  const grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,c1); grd.addColorStop(1,c2);
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  // stars (parallax slow)
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  stars.forEach(s=>{
+    const sx = s.x - camX*0.2;
+    const wx = ((sx%WORLD_W)+WORLD_W)%WORLD_W;
+    if(wx<W) ctx.fillRect(wx, s.y*H, s.r, s.r);
+  });
+  // distant hills (parallax)
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.moveTo(0,groundY());
+  for(let x=0;x<=W;x+=40){
+    const wx=x+camX*0.4;
+    ctx.lineTo(x, groundY()-60-Math.sin(wx*0.004)*40-Math.cos(wx*0.011)*20);
+  }
+  ctx.lineTo(W,groundY()); ctx.closePath(); ctx.fill();
+}
+
+function drawWorld(){
+  const g=groundY();
+  // landmarks + city markers
+  CITIES.forEach((c,i)=>{
+    const sx = c.x - camX;
+    if(sx < -300 || sx > W+300) return;
+    LANDMARKS[c.type](sx, g);
+    // signpost / portal beam at city center
+    const reached = visited.has(i);
+    ctx.fillStyle = reached ? 'rgba(78,205,196,.25)' : 'rgba(124,106,247,.22)';
+    ctx.fillRect(sx-3, 0, 6, g);
+    // job title floating high in the sky above the buildings
+    const jobTitle = c.role;
+    const jy = g*0.4;   // mid-sky, above the buildings
+    ctx.textAlign='center';
+    ctx.font='28px serif';
+    ctx.fillText(c.flag, sx, jy-22);
+    ctx.font='700 14px Segoe UI, sans-serif';
+    const jtW = Math.max(ctx.measureText(jobTitle).width + 26, 90);
+    ctx.fillStyle='rgba(124,106,247,.92)'; rr(sx-jtW/2, jy, jtW, 26, 8); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.fillText(jobTitle, sx, jy+18);
+    // label plate (city • year)
+    ctx.fillStyle='rgba(10,12,24,.55)'; rr(sx-58, g-30, 116, 22, 6); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='600 12px Segoe UI, sans-serif';
+    ctx.fillText(c.city.toUpperCase()+'  •  '+c.year.split(' ')[0], sx, g-15);
+    if(reached){ ctx.fillStyle='#4ecdc4'; ctx.font='11px Segoe UI'; ctx.fillText('✓ visited', sx, g+24); }
+  });
+  ctx.textAlign='start';
+  // ground
+  ctx.fillStyle='#11131f'; ctx.fillRect(0,g,W,GROUND_H);
+  ctx.fillStyle='#1b1e30'; ctx.fillRect(0,g,W,5);
+  // path dashes
+  ctx.fillStyle='rgba(255,255,255,.12)';
+  for(let x=-(camX%60); x<W; x+=60) ctx.fillRect(x, g+GROUND_H/2, 30, 3);
+}
+
+// ── Update ──
+function update(){
+  if(!started || panelOpen){ player.vx*=0.6; return; }
+  let dir=0;
+  if(keys['ArrowLeft']||keys['a']) dir=-1;
+  if(keys['ArrowRight']||keys['d']) dir=1;
+  if(touchDir) dir=touchDir;
+
+  player.vx = dir*player.speed;
+  if(dir) player.facing=dir;
+  player.x += player.vx;
+  player.x = Math.max(40, Math.min(WORLD_W-40, player.x));
+
+  // walk animation
+  if(Math.abs(player.vx)>0.3) player.walkPhase += 0.25;
+
+  // jump
+  const g=groundY();
+  if((keys[' ']||keys['ArrowUp']||keys['w']) && player.onGround){
+    player.vy=-12; player.onGround=false;
+  }
+  player.vy += 0.6;
+  player.y += player.vy;
+  if(player.y > 0){ player.y=0; player.vy=0; player.onGround=true; }
+
+  // camera follows
+  const targetCam = player.x - W*0.35;
+  camX += (targetCam - camX)*0.1;
+  camX = Math.max(0, Math.min(WORLD_W-W, camX));
+
+  // city collision
+  CITIES.forEach((c,i)=>{
+    if(Math.abs(player.x - c.x) < 55 && activeCity!==i){
+      openPanel(i);
+    }
+    if(Math.abs(player.x - c.x) > 120 && activeCity===i){
+      activeCity=null; // re-armable once you walk away
+    }
+  });
+
+  // progress
+  const pct = Math.round(player.x / (CITIES[CITIES.length-1].x) * 100);
+  const clamped=Math.max(0,Math.min(100,pct));
+  document.getElementById('progressFill').style.width=clamped+'%';
+  document.getElementById('progressPct').textContent=clamped+'%';
+}
+
+// ── Loop ──
+function loop(){
+  update();
+  drawBackground();
+  drawWorld();
+  if(started) drawPlayer();
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ── Banner scene (renders the city's landmark art as a postcard-style image) ──
+const bannerCache = {};
+function makeBannerImage(c){
+  if(bannerCache[c.type]) return bannerCache[c.type];
+  const BW=520, BH=170;
+  const oc=document.createElement('canvas'); oc.width=BW; oc.height=BH;
+  const o=oc.getContext('2d');
+  // sky
+  const sky=o.createLinearGradient(0,0,0,BH);
+  sky.addColorStop(0,c.sky[0]); sky.addColorStop(1,c.sky[1]);
+  o.fillStyle=sky; o.fillRect(0,0,BW,BH);
+  // soft sun/moon glow
+  o.fillStyle='rgba(255,255,255,.18)';
+  o.beginPath(); o.arc(BW-80,46,40,0,7); o.fill();
+  // ground line a bit below the bottom so landmarks fill the frame
+  const g=BH+34;
+  // landmark drawers paint on the global `ctx` and use `rr`; swap ctx to the
+  // offscreen context for the duration, then restore it.
+  const prevCtx=ctx;
+  ctx=o;
+  LANDMARKS[c.type](BW/2, g);
+  ctx=prevCtx;
+  const url=oc.toDataURL('image/png');
+  bannerCache[c.type]=url;
+  return url;
+}
+
+// ── Panel ──
+function openPanel(i){
+  const c=CITIES[i];
+  activeCity=i; panelOpen=true; visited.add(i);
+  const banner=document.getElementById('cardBanner');
+  banner.style.background=`linear-gradient(135deg,${c.color},${c.sky[0]})`;
+  banner.style.backgroundImage=`linear-gradient(135deg,${c.color}cc,${c.sky[0]}99), url(${makeBannerImage(c)})`;
+  document.getElementById('cardFlag').textContent=c.flag;
+  document.getElementById('cardCity').textContent=c.city;
+  document.getElementById('cardYear').textContent=c.year;
+  document.getElementById('cardRole').textContent=c.role;
+  document.getElementById('cardOrg').textContent=c.org;
+  document.getElementById('cardBullets').innerHTML=c.bullets.map(b=>`<li>${b}</li>`).join('');
+  document.getElementById('cardTags').innerHTML=c.tags.map(t=>`<span class="tag">${t}</span>`).join('');
+  document.getElementById('cardNav').textContent=`Stop ${i+1} of ${CITIES.length}`;
+  document.getElementById('title').innerHTML=`${c.city} <small>${TRAVELLER_NAME} · Career Quest</small>`;
+  document.getElementById('panel').classList.add('show');
+}
+function closePanel(){
+  panelOpen=false;
+  document.getElementById('panel').classList.remove('show');
+  // nudge player forward so they clear the trigger zone
+  if(activeCity!==null) player.x = CITIES[activeCity].x + 70;
+}
+window.closePanel=closePanel;
+
+// ── Avatar picker ──
+function renderPreview(canvas, gender){
+  const c=canvas.getContext('2d');
+  c.clearRect(0,0,canvas.width,canvas.height);
+  c.save();
+  c.translate(canvas.width/2, 58);
+  c.scale(1.6,1.6);
+  drawAvatar(c, gender, 5, 46);   // slight leg pose
+  c.restore();
+}
+document.querySelectorAll('.avatar-opt').forEach(opt=>{
+  const g=opt.dataset.gender;
+  renderPreview(opt.querySelector('canvas'), g);
+  opt.addEventListener('click',()=>{
+    playerGender=g;
+    document.querySelectorAll('.avatar-opt').forEach(o=>o.classList.remove('selected'));
+    opt.classList.add('selected');
+    document.getElementById('startBtn').disabled=false;
+  });
+});
+
+// ── Start ──
+document.getElementById('startBtn').addEventListener('click',()=>{
+  if(!playerGender) return;
+  document.getElementById('intro').style.display='none';
+  started=true;
+  document.getElementById('title').innerHTML=`On the road <small>${TRAVELLER_NAME} · Career Quest</small>`;
+});
+</script>
+</body>
+</html>
