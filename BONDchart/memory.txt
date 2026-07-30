@@ -1,6 +1,6 @@
 ================================================================================
 BONDchart — SESSION LOG / PROJECT MEMORY
-Last updated: 2026-07-27
+Last updated: 2026-07-29
 Read this first to be fully caught up.
 ================================================================================
 
@@ -93,13 +93,28 @@ WHAT I DID (SESSION OF 2026-07-23/24)
      forecast week is already a MISS on record (row kept in forecast.xlsx
      for history). Fixed 07-24 event text, added 07-31 event row (FOMC week,
      text = expectations; REFRESH IT to outcomes next update).
-   - CURRENT FORECAST (made_on 2026-07-27, anchor_close 98.55):
-       2026-08-07 🇮🇷 O=98.55 H=99.40 L=97.90 C=99.10  ceasefire lands, test 99.40
-       2026-08-14 🇺🇸 O=99.10 H=99.65 L=98.15 C=98.50  truce tested, US CPI
-       2026-08-21 🇪🇺 O=98.50 H=99.00 L=97.30 C=97.70  Sept ECB pricing
-       2026-08-28 🇺🇸 O=97.70 H=98.40 L=96.70 C=97.10  Jackson Hole
-     Scenario arc: ceasefire bounce -> fade at 99.40 -> downside toward
-     96.60 YTD low into September central-bank risk.
+   - SESSION 2026-07-29 UPDATE ("run all" cycle, data thru Wed 07-29):
+     Hawkish Jul 29 FOMC hold (oil-inflation risk flagged, hike not ruled
+     out) -> BTP gave back the relief rally, Wed close 97.93 (-0.86%).
+     * 07-31 macro row refreshed to FOMC outcome (week still incomplete —
+       RE-CHECK it next update once Thu/Fri land).
+     * TWIST: the 07-24 vintage's 07-31 week, previously a recorded MISS
+       (mid-week 98.55 > 98.45 high), is now back IN range at 97.93 —
+       update.py scores it HIT (1/1). Its note rewritten: provisional HIT,
+       final verdict at Friday close. Lesson added: don't judge HIT/MISS
+       before the week completes. update.py judges the in-progress week
+       as if complete — beware.
+     * Drift -0.62 -> REVIEW -> re-anchored; 07-27 vintage rows marked
+       "superseded by 2026-07-29 re-anchor (drift -0.62, hawkish FOMC)".
+     * S/R shifted with new data: old S 98.36 + S 97.37 merged into
+       S 98.02 (6 levels now); forecast texts updated to cite 98.02.
+   - CURRENT FORECAST (made_on 2026-07-29, anchor_close 97.93):
+       2026-08-07 🇮🇷 O=97.93 H=98.90 L=97.20 C=98.60  ceasefire signs, capped 98.90
+       2026-08-14 🇺🇸 O=98.60 H=99.10 L=97.60 C=98.00  truce tested, US CPI
+       2026-08-21 🇪🇺 O=98.00 H=98.50 L=96.90 C=97.30  Sept ECB pricing
+       2026-08-28 🇺🇸 O=97.30 H=98.00 L=96.40 C=96.80  Jackson Hole
+     Scenario arc: truce relief capped by hawkish Fed near 98.90 -> fade ->
+     downside toward 96.60 YTD low into September central-bank risk.
 
 5) REWROTE THE ENTIRE NARRATIVE (user request: MORE FED)
    User: "the ECB is important but not more than the FED" — the narrative

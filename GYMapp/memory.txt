@@ -1,0 +1,88 @@
+GAINS MAP — project memory
+Last updated: 2026-07-29
+
+WHAT THIS IS
+A gamified workout tracker for Mauro. Dark-themed web app ("GAINS MAP") with a
+Python backend. He submits his exercises every day; progress is stored in an
+Excel file and shown as XP levels, a body map, a streak, and a weekly plan.
+
+FILES (all in /Users/mdp/Downloads/AIcode/GYMapp)
+- APP.html   frontend (single file, vanilla JS, no hardcoded data — everything
+             is fetched from the backend)
+- server.py  Flask backend, Python 3.8, uses openpyxl. Serves APP.html and the
+             JSON API on http://localhost:5001
+- gains.xlsx the ONLY data store. Auto-created with defaults if missing.
+             Missing sheets are auto-added on load (migration-friendly).
+
+HOW TO RUN
+  cd /Users/mdp/Downloads/AIcode/GYMapp && python3 server.py
+  then open http://localhost:5001
+Opening APP.html directly as a file does NOT work (needs the API).
+Keep gains.xlsx CLOSED in Excel while using the app (file lock breaks saves).
+
+EXCEL SHEETS (gains.xlsx)
+- Workouts:  date, exercise_id — one row per exercise logged. SOURCE OF TRUTH.
+- Skips:     date — one row per skipped training day. Also source of truth.
+- XP:        group, xp (STARTING xp), weighted (yes/blank)
+- Exercises: id, group, label, impact ("region:weight;region:weight",
+             e.g. "chest:1;triceps:0.45")
+- Levels:    min, max, square, name, color, kg
+- Plan:      day (Mon..Sun), groups ("chest;shoulders;triceps", "" = rest)
+- Profile:   key/value (sex, age, height_cm, weight_kg, bmi, bodyfat_pct)
+User can edit any config sheet directly in Excel; app picks it up on reload.
+
+API
+- GET  /api/state    -> {groups, xp, exercises, levels, profile, entries,
+                         plan, skips}
+- POST /api/workout  {date, exIds:[...]} -> appends rows to Workouts
+- POST /api/skip     {date} -> TOGGLES the date in Skips (click again = undo)
+All POSTs return the full recomputed state.
+
+CORE RULES (all computed server-side in build_state(), nothing stored derived)
+- XP per muscle group = starting XP (XP sheet)
+                        + 1 per exercise ever logged for that group
+                        - 1 per scheduled group on each skipped day
+                        clamped to [0, 100].
+- Levels (10 XP each): 0-9 ⬛Disgusting, 10-19 ⬜Pathetic, 20-29 🟥Fragile,
+  30-39 🟥Weak, 40-49 🟧Yamcha, 50-59 🟧Krillin, 60-69 🟨Warrior,
+  70-79 🟨Ninja, 80-89 🟩Piccolo, 90-99 🟪Toji, 100 🟦Vegeta.
+- Each level unlocks a working weight: 5kg at level 1, +5kg per level
+  (Yamcha=25kg ... Vegeta=55kg). Stored in Levels.kg. The kg shown next to a
+  muscle = its CURRENT level's kg. Groups with weighted="" (abs, mobility)
+  show no kg.
+- Weekly plan: Mon Chest+Shoulders+Triceps, Tue Legs+Back+Biceps,
+  Wed Abs+Mobility, Thu=Mon, Fri=Tue, Sat=Wed, Sun Rest.
+
+UI (3 panels)
+- LEFT "Muscle XP": per-group bars with level tick marks at 10,20,...,100;
+  shows xp, level square+name, current kg. Below it: "This week" calendar
+  (Mon-Sun, dates, today highlighted, ✓ = workout logged that day,
+  ✗ = skipped). Clicking a past/today non-rest day toggles it skipped
+  (-1 XP per scheduled muscle); future days and Rest are not clickable.
+- CENTER "Body level map": front+back SVG bodies. Each region is painted
+  with the LEVEL COLOR of the muscle group that trains it hardest (derived
+  from exercise impact weights — NOT the weekly heat; user was emphatic
+  the map must match the level colors). Tooltip shows level name, xp, and
+  "% hot this week" (7-day linear decay heat, tooltip only). No color
+  legend (user asked to remove it). Streak counter in the header;
+  profile strip at the bottom (from Profile sheet).
+- RIGHT "Today's workout": date picker + exercise chips grouped by muscle;
+  Submit posts to /api/workout.
+
+HISTORY / DECISIONS
+- Originally the app used window.storage (Claude artifact storage) and all
+  data was hardcoded in JS. User wanted a Python backend storing in Excel
+  with NOTHING coded in the JS — hence everything (even levels/exercises/
+  profile) lives in gains.xlsx.
+- XP was first stored and mutated on save; changed to fully derived from
+  Workouts/Skips so history is the single source of truth.
+- kg was first a fixed per-group value; changed to level-derived
+  (+5kg per level, "level ups unlock harder quests").
+- Heat map colored by weekly heat first (grey→yellow→red), then by level
+  ladder heat, finally by the group's level color (user: "if triceps are
+  fragile why is the heatmap krillin" — colors MUST match the left panel).
+- Real user data started 2026-07-28. Never delete gains.xlsx if Workouts
+  has rows — migrate in place.
+
+POSSIBLE NEXT STEPS (mentioned, not requested yet)
+- Auto-start server on login (launchd) so he never has to run it manually.

@@ -1,6 +1,5 @@
 
 import json
-import os
 import subprocess
 import sys
 import ollama
@@ -53,7 +52,7 @@ def run_agent_loop():
 
     while True:
         try:
-            user_input = input("✨ User: ")
+            user_input = input("🙂 >")
             if user_input.lower() in ['exit', 'quit']:
                 break
             if not user_input.strip():
@@ -76,7 +75,7 @@ def run_agent_loop():
                     tool_name = tool_call['function']['name']
                     arguments = tool_call['function']['arguments']
                     
-                    print(f"🛠️ [Executing Tool] {tool_name}({json.dumps(arguments)})")
+                    print(f"🔧 >[Executing Tool] {tool_name}({json.dumps(arguments)})")
                     
                     if tool_name in TOOL_MAP:
                         # Execute tool and grab output string
@@ -89,7 +88,7 @@ def run_agent_loop():
                             "content": tool_result
                         })
                     else:
-                        print(f"❌ Unknown tool execution attempted: {tool_name}")
+                        print(f"⚠️ >Unknown tool execution attempted: {tool_name}")
                 
                 # Re-submit history including tool logs for final evaluation
                 response = ollama.chat(
@@ -99,9 +98,9 @@ def run_agent_loop():
                 )
 
             # Display final text answer to user
-            agent_reply = response['message']['content']
-            print(f"🤖 Agent: {agent_reply}\n")
-            messages.append({"role": "assistant", "content": agent_reply})
+            res = response['message']['content']
+            print(f"👽 >{res}\n")
+            messages.append({"role": "assistant", "content": res})
 
         except KeyboardInterrupt:
             print("\nExiting.")

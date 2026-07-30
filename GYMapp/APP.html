@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAINS MAP — Workout Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0b0d; --panel:#17171a; --panel-2:#1e1e22; --line:#2a2a2f;
+    --text:#f3f2ee; --muted:#8c8c93;
+    --red:#e0393f; --yellow:#f2c14e; --grey:#2c2c31;
+    --base:#1a1a1e; --stroke:#46464e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1280px;margin:0 auto;padding:14px 18px 40px;}
+  .panelHead{display:flex;justify-content:center;align-items:baseline;gap:8px;margin-bottom:12px;}
+  .streakInline{font-family:'Oswald',sans-serif;font-size:11px;color:var(--muted);letter-spacing:.5px;}
+  .streakInline .num{color:var(--yellow);font-weight:600;}
+
+  .grid{display:grid;grid-template-columns:300px 1fr 330px;gap:16px;align-items:stretch;}
+  .grid > .panel{height:100%;}
+  @media (max-width:1020px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;}
+  .panel h2{font-family:'Oswald',sans-serif;font-size:13px;text-transform:uppercase;letter-spacing:1.2px;margin:0 0 12px;color:var(--muted);}
+
+  /* XP panel */
+  .xpRow{padding:8px 0;border-bottom:1px solid var(--line);}
+  .xpRow:last-child{border-bottom:none;}
+  .xpTop{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;}
+  .xpTop .nm{font-weight:600;}
+  .xpTop .kg{color:var(--muted);font-size:11px;margin-left:5px;font-weight:400;}
+  .xpTop .lvl{font-family:'Oswald',sans-serif;font-size:12.5px;letter-spacing:.3px;}
+  .xpBarWrap{position:relative;height:6px;background:var(--panel-2);border-radius:3px;margin-top:6px;overflow:hidden;}
+  .xpBar{height:100%;border-radius:3px;transition:width .5s ease;}
+  .xpTick{position:absolute;top:0;bottom:0;width:1px;background:var(--bg);opacity:.9;}
+
+  .weekPlan{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);}
+  .weekPlan .wpLbl{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+  .wpRow{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:7px;font-size:11.5px;}
+  .wpRow.clickable{cursor:pointer;}
+  .wpRow.clickable:hover{background:var(--panel-2);}
+  .wpRow.today{background:var(--panel-2);outline:1px solid var(--line);}
+  .wpRow.future{opacity:.45;}
+  .wpRow.skipped .wpGroups{color:var(--red);text-decoration:line-through;}
+  .wpDay{font-family:'Oswald',sans-serif;width:36px;color:var(--muted);letter-spacing:.5px;}
+  .wpGroups{flex:1;}
+  .wpGroups.rest{color:var(--muted);font-style:italic;}
+  .wpMark{width:16px;text-align:center;font-size:12px;}
+  .wpHint{font-size:10px;color:var(--muted);margin-top:7px;}
+
+  /* body maps */
+  .maps{display:flex;justify-content:center;gap:10px;position:relative;}
+  .mapCol{width:48%;max-width:220px;}
+  .mapCol svg{width:100%;height:auto;}
+  .muscle{cursor:pointer;stroke:#0b0b0d;stroke-width:1.2;transition:fill .35s ease;}
+  .base{fill:var(--base);stroke:var(--stroke);stroke-width:1.2;}
+  .mapLbl{text-align:center;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-family:'Oswald',sans-serif;}
+  .tip{position:absolute;pointer-events:none;background:#000;border:1px solid var(--line);color:var(--text);font-size:11px;padding:4px 8px;border-radius:6px;transform:translate(-50%,-115%);white-space:nowrap;opacity:0;transition:opacity .12s;z-index:5;}
+
+  .profileStrip{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);}
+  .pItem{display:flex;align-items:baseline;gap:4px;}
+  .pVal{font-family:'Oswald',sans-serif;font-size:17px;font-weight:600;color:var(--text);}
+  .pLbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+  .pSep{width:1px;height:18px;background:var(--line);}
+
+  /* workout panel */
+  .dateRow{margin-bottom:10px;}
+  .dateRow input[type=date]{background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:7px 10px;border-radius:8px;font-family:'Inter',sans-serif;font-size:12.5px;width:100%;}
+  .wGroup{margin-bottom:10px;}
+  .wGroup .gName{font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--yellow);margin-bottom:5px;}
+  .wGroup .gHint{color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10.5px;}
+  .exList{display:flex;flex-wrap:wrap;gap:5px;}
+  .exChip{font-size:11px;padding:5px 9px;border-radius:14px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);cursor:pointer;user-select:none;transition:all .15s;}
+  .exChip.sel{background:var(--red);border-color:var(--red);color:#fff;}
+  .saveBtn{width:100%;background:var(--red);color:#fff;border:none;padding:11px;border-radius:9px;font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-top:6px;}
+  .saveBtn:hover{filter:brightness(1.08);}
+  .note{font-size:10.5px;color:var(--muted);margin-top:7px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="grid">
+
+    <!-- LEFT: XP -->
+    <div class="panel">
+      <h2>Muscle XP</h2>
+      <div id="xpList"></div>
+      <div id="weekPlan" class="weekPlan"></div>
+    </div>
+
+    <!-- CENTER: MAPS -->
+    <div class="panel">
+      <div class="panelHead">
+        <h2 id="loadState" style="margin:0;">Body level map</h2>
+        <span class="streakInline">· <span class="num" id="streakNum">0</span> day streak</span>
+      </div>
+      <div class="maps">
+        <div class="mapCol">
+          <svg id="svgFront" viewBox="0 0 300 620" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="mapLbl">Front</div>
+        </div>
+        <div class="mapCol">
+          <svg id="svgBack" viewBox="0 0 300 620" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="mapLbl">Back</div>
+        </div>
+        <div class="tip" id="tip"></div>
+      </div>
+      <div class="profileStrip" id="profileStrip"></div>
+    </div>
+
+    <!-- RIGHT: WORKOUT -->
+    <div class="panel">
+      <h2>Today's workout</h2>
+      <div class="dateRow"><input type="date" id="logDate"></div>
+      <div id="workoutGroups"></div>
+      <button class="saveBtn" id="saveBtn">Submit workout</button>
+      <div class="note">each exercise = +1 XP to its muscle · heat fades over 7 days</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+
+  // ---------- state (all loaded from the Python backend / gains.xlsx) ----------
+  let GROUPS = [], EXERCISES = [], LEVELS = [], EX_BY_ID = {};
+  let entries = [], xp = {}, profile = {}, plan = [], skips = [];
+  function levelFor(v){ return LEVELS.find(l=> v>=l.min && v<=l.max) || LEVELS[0]; }
+  function levelTicks(){
+    return LEVELS.filter(l=> l.min>0 && l.min<=100)
+      .map(l=>`<div class="xpTick" style="left:${l.min}%"></div>`).join('');
+  }
+
+  // ---------- regions ----------
+  const REGIONS = {
+    abs_upper:'Upper Abs', abs_lower:'Lower Abs', obliques:'Obliques',
+    chest:'Chest', shoulders:'Shoulders', biceps:'Biceps', forearms:'Forearms',
+    triceps:'Triceps', back:'Back',
+    upperlegs_front:'Upper Legs (front)', upperlegs_back:'Upper Legs (back)',
+    calves:'Lower Legs (front)', calves_back:'Lower Legs (calves)', head:'Head (brain gains)',
+  };
+
+  // ---------- SVG geometry ----------
+  function poly(pts){ return pts.map(p=>p.join(',')).join(' '); }
+  function mirror(pts){ return pts.map(([x,y])=>[300-x,y]); }
+
+  const chestShape  = [[150,108],[150,180],[117,184],[96,148],[107,109]];
+  const shoulder    = [[100,105],[123,96],[131,128],[106,149],[85,127]];
+  const arm_upper   = [[88,150],[107,147],[115,216],[96,227],[75,190]];
+  const forearm     = [[96,227],[115,216],[124,292],[101,303],[83,269]];
+  const abs_upper   = [[131,183],[169,183],[168,229],[132,229]];
+  const abs_lower   = [[132,231],[168,231],[166,272],[134,272]];
+  const obliqueR    = [[152,193],[170,187],[181,257],[157,267]];
+  const quad        = [[159,306],[199,300],[204,421],[163,429],[152,319]];
+  const calf        = [[163,426],[203,421],[197,563],[169,569],[158,472]];
+  // back
+  const traps       = [[128,103],[172,103],[163,145],[137,145]];
+  const lat         = [[150,150],[181,157],[188,233],[157,238]];
+  const midback     = [[137,147],[163,147],[160,200],[140,200]];
+  const lowerback   = [[133,240],[167,240],[162,283],[138,283]];
+  const glutes      = [[127,287],[173,287],[181,333],[119,333]];
+  const hamstring   = [[159,336],[199,331],[204,431],[163,439],[152,346]];
+  // single unified back block (traps + lats + lower back as one region)
+  const backBlock   = [[128,103],[172,103],[184,125],[190,230],[166,283],[134,283],[110,230],[116,125]];
+
+  function baseBody(){
+    return `
+      <ellipse class="muscle" data-r="head" cx="150" cy="55" rx="29" ry="32"/>
+      <rect class="base" x="138" y="80" width="24" height="24" rx="4"/>
+      <path class="base" d="M100,100 L200,100 L212,180 L188,300 L112,300 L88,180 Z"/>
+      <path class="base" d="M85,120 L100,105 L118,150 L108,300 L80,300 L70,190 Z"/>
+      <path class="base" d="M215,120 L200,105 L182,150 L192,300 L220,300 L230,190 Z"/>
+      <ellipse class="base" cx="76" cy="312" rx="12" ry="14"/>
+      <ellipse class="base" cx="224" cy="312" rx="12" ry="14"/>
+      <path class="base" d="M115,300 L185,300 L192,335 L108,335 Z"/>
+      <path class="base" d="M108,335 L150,332 L160,580 L120,585 Z"/>
+      <path class="base" d="M192,335 L150,332 L140,580 L180,585 Z"/>
+      <ellipse class="base" cx="122" cy="595" rx="16" ry="9"/>
+      <ellipse class="base" cx="178" cy="595" rx="16" ry="9"/>
+    `;
+  }
+  function shape(region, pts){ return `<polygon class="muscle" data-r="${region}" points="${poly(pts)}"/>`; }
+
+  function faceFeatures(){
+    return `
+      <ellipse cx="139" cy="50" rx="4" ry="5" fill="#0b0b0d"/>
+      <ellipse cx="161" cy="50" rx="4" ry="5" fill="#0b0b0d"/>
+      <path d="M150,58 L146,68 L154,68 Z" fill="none" stroke="#0b0b0d" stroke-width="2" stroke-linejoin="round"/>
+    `;
+  }
+
+  function buildFrontSVG(){
+    let s = baseBody() + faceFeatures();
+    s += shape('chest', chestShape) + shape('chest', mirror(chestShape));
+    s += shape('shoulders', shoulder) + shape('shoulders', mirror(shoulder));
+    s += shape('biceps', arm_upper) + shape('biceps', mirror(arm_upper));
+    s += shape('forearms', forearm) + shape('forearms', mirror(forearm));
+    s += shape('abs_upper', abs_upper);
+    s += shape('abs_lower', abs_lower);
+    s += shape('obliques', obliqueR) + shape('obliques', mirror(obliqueR));
+    s += shape('upperlegs_front', quad) + shape('upperlegs_front', mirror(quad));
+    s += shape('calves', calf) + shape('calves', mirror(calf));
+    return s;
+  }
+  function buildBackSVG(){
+    // no shoulders on the back picture; whole back = one solid block
+    let s = baseBody();
+    s += shape('back', backBlock);
+    s += shape('triceps', arm_upper) + shape('triceps', mirror(arm_upper));
+    s += shape('forearms', forearm) + shape('forearms', mirror(forearm));
+    s += shape('upperlegs_back', glutes);
+    s += shape('upperlegs_back', hamstring) + shape('upperlegs_back', mirror(hamstring));
+    s += shape('calves_back', calf) + shape('calves_back', mirror(calf));
+    return s;
+  }
+
+  document.getElementById('svgFront').innerHTML = buildFrontSVG();
+  document.getElementById('svgBack').innerHTML = buildBackSVG();
+
+  // tooltip
+  const tip = document.getElementById('tip');
+  document.querySelectorAll('.muscle').forEach(el=>{
+    el.addEventListener('mousemove',(e)=>{
+      const wrap = e.target.closest('.maps').getBoundingClientRect();
+      tip.style.left = (e.clientX - wrap.left)+'px';
+      tip.style.top = (e.clientY - wrap.top)+'px';
+      const r = el.dataset.r;
+      const pct = Math.round(((window.__heat && window.__heat[r]) || 0)*100);
+      const rg = window.__regionGroup && window.__regionGroup[r];
+      const d = rg && xp[rg.g];
+      const lv = d && levelFor(d.xp);
+      const info = lv ? lv.name+' ('+d.xp+' xp) · '+(pct>0 ? pct+'% hot this week' : 'not trained this week') : 'untracked';
+      tip.textContent = (REGIONS[r]||r)+' — '+info;
+      tip.style.opacity = 1;
+    });
+    el.addEventListener('mouseleave',()=>{ tip.style.opacity=0; });
+  });
+
+  // ---------- workout form ----------
+  const workoutGroups = document.getElementById('workoutGroups');
+  const selected = new Set();
+
+  function buildForm(){
+    workoutGroups.innerHTML = '';
+    GROUPS.forEach(g=>{
+      const exs = EXERCISES.filter(e=>e.group===g.key);
+      const div = document.createElement('div');
+      div.className = 'wGroup';
+      const hint = g.hint ? ` <span class="gHint">(${g.hint})</span>` : '';
+      div.innerHTML = `<div class="gName">${g.label}${hint}</div>
+        <div class="exList">${exs.map(e=>`<span class="exChip" data-id="${e.id}">${e.label}</span>`).join('')}</div>`;
+      workoutGroups.appendChild(div);
+    });
+  }
+
+  workoutGroups.addEventListener('click',(e)=>{
+    const chip = e.target.closest('.exChip');
+    if(!chip) return;
+    const id = chip.dataset.id;
+    if(selected.has(id)){ selected.delete(id); chip.classList.remove('sel'); }
+    else{ selected.add(id); chip.classList.add('sel'); }
+  });
+
+  const logDate = document.getElementById('logDate');
+  logDate.value = new Date().toISOString().slice(0,10);
+
+  // ---------- backend API ----------
+  function applyState(d){
+    GROUPS = d.groups || [];
+    EXERCISES = d.exercises || [];
+    LEVELS = d.levels || [];
+    EX_BY_ID = Object.fromEntries(EXERCISES.map(e=>[e.id,e]));
+    entries = d.entries || [];
+    xp = d.xp || {};
+    profile = d.profile || {};
+    plan = d.plan || [];
+    skips = d.skips || [];
+  }
+
+  async function loadAll(){
+    document.getElementById('loadState').textContent = 'Loading…';
+    try{
+      const res = await fetch('/api/state');
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      applyState(await res.json());
+      document.getElementById('loadState').textContent = 'Body level map';
+      buildForm();
+      render();
+    }catch(err){
+      console.error('load failed', err);
+      document.getElementById('loadState').textContent = 'Backend offline — run: python3 server.py';
+    }
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', async ()=>{
+    const date = logDate.value;
+    if(!date) return;
+    if(selected.size===0){ alert('pick at least one exercise before submitting, love'); return; }
+
+    try{
+      const res = await fetch('/api/workout', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date, exIds:[...selected]})
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      applyState(await res.json());
+    }catch(err){
+      console.error('save failed', err);
+      alert('could not save — is the backend running? (python3 server.py)');
+      return;
+    }
+
+    selected.clear();
+    document.querySelectorAll('.exChip.sel').forEach(c=>c.classList.remove('sel'));
+    render();
+  });
+
+  // ---------- heat ----------
+  function computeHeat(){
+    const now = new Date(); now.setHours(0,0,0,0);
+    const heat = {};
+    Object.keys(REGIONS).forEach(r=> heat[r]=0);
+    entries.forEach(e=>{
+      const d = new Date(e.date+'T00:00:00');
+      const daysAgo = Math.round((now-d)/86400000);
+      if(daysAgo<0 || daysAgo>7) return;
+      const decay = Math.max(0, 1 - daysAgo/7);
+      (e.exIds||[]).forEach(id=>{
+        const ex = EX_BY_ID[id];
+        if(!ex) return;
+        Object.keys(ex.impact).forEach(r=>{
+          heat[r] = (heat[r]||0) + ex.impact[r]*decay;
+        });
+      });
+    });
+    Object.keys(heat).forEach(r=>{ heat[r]=Math.min(1, heat[r]/2); });
+    return heat;
+  }
+
+  function computeStreak(){
+    const dates = new Set(entries.map(e=>e.date));
+    let streak=0; let d=new Date(); d.setHours(0,0,0,0);
+    while(true){
+      const iso = d.toISOString().slice(0,10);
+      if(dates.has(iso)){ streak++; d.setDate(d.getDate()-1); } else break;
+    }
+    return streak;
+  }
+
+  // ---------- render ----------
+  function render(){
+    const heat = computeHeat();
+    window.__heat = heat;
+
+    // map each body region to the muscle group that trains it hardest,
+    // then paint it with that group's level color — same as the XP panel
+    const regionGroup = {};
+    EXERCISES.forEach(e=>{
+      Object.entries(e.impact).forEach(([r,w])=>{
+        if(!regionGroup[r] || w>regionGroup[r].w) regionGroup[r] = {g:e.group, w};
+      });
+    });
+    window.__regionGroup = regionGroup;
+    document.querySelectorAll('.muscle').forEach(el=>{
+      const rg = regionGroup[el.dataset.r];
+      const d = rg && xp[rg.g];
+      el.style.fill = d ? levelFor(d.xp).color : '#1a1a1e';
+    });
+    document.getElementById('streakNum').textContent = computeStreak();
+
+    // profile strip
+    const pItems = [
+      [(profile.sex||'')+' '+(profile.age||''), 'yo'],
+      [profile.height_cm, 'cm'], [profile.weight_kg, 'kg'],
+      [profile.bmi, 'BMI'], [profile.bodyfat_pct!=null ? profile.bodyfat_pct+'%' : null, 'body fat'],
+    ].filter(([v])=> v!=null && String(v).trim()!=='');
+    document.getElementById('profileStrip').innerHTML = pItems
+      .map(([v,l])=>`<div class="pItem"><span class="pVal">${v}</span><span class="pLbl">${l}</span></div>`)
+      .join('<div class="pSep"></div>');
+
+    // XP list
+    const xpList = document.getElementById('xpList');
+    xpList.innerHTML = '';
+    GROUPS.forEach(g=>{
+      const d = xp[g.key] || {xp:0, kg:null};
+      const lv = levelFor(d.xp);
+      const kg = d.kg ? `<span class="kg">(${d.kg}kg)</span>` : '';
+      const row = document.createElement('div');
+      row.className = 'xpRow';
+      row.innerHTML = `
+        <div class="xpTop">
+          <div class="nm">${g.label}${kg}</div>
+          <div class="lvl">${d.xp} ${lv.sq} <span style="color:${lv.color}">${lv.name}</span></div>
+        </div>
+        <div class="xpBarWrap"><div class="xpBar" style="width:${Math.min(100,d.xp)}%;background:${lv.color};"></div>${levelTicks()}</div>`;
+      xpList.appendChild(row);
+    });
+
+    // week plan calendar (Mon-Sun) — click a day to mark it skipped
+    const wp = document.getElementById('weekPlan');
+    const today = new Date(); today.setHours(0,0,0,0);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay()+6)%7)); // back to Monday
+    const doneDates = new Set(entries.map(e=>e.date));
+    const skipSet = new Set(skips);
+    const labelOf = k => (GROUPS.find(g=>g.key===k)||{}).label || k;
+
+    let rows = '';
+    plan.forEach((p,i)=>{
+      const d = new Date(monday); d.setDate(monday.getDate()+i);
+      const iso = d.toISOString().slice(0,10);
+      const rest = p.groups.length===0;
+      const isToday = d.getTime()===today.getTime();
+      const future = d>today;
+      const done = doneDates.has(iso);
+      const skipped = skipSet.has(iso);
+      const clickable = !rest && !future;
+      const mark = skipped ? '✗' : (done ? '✓' : '');
+      const markColor = skipped ? 'var(--red)' : '#4caf6e';
+      const cls = ['wpRow', isToday?'today':'', future?'future':'',
+                   skipped?'skipped':'', clickable?'clickable':''].join(' ');
+      rows += `<div class="${cls}" ${clickable?`data-date="${iso}"`:''} ${clickable?`title="click to toggle skipped"`:''}>
+        <span class="wpDay">${p.day} ${d.getDate()}</span>
+        <span class="wpGroups ${rest?'rest':''}">${rest?'Rest':p.groups.map(labelOf).join(' + ')}</span>
+        <span class="wpMark" style="color:${markColor}">${mark}</span>
+      </div>`;
+    });
+    wp.innerHTML = `<div class="wpLbl">This week</div>${rows}
+      <div class="wpHint">skipped a day? click it — every muscle scheduled loses 1 XP (click again to undo)</div>`;
+  }
+
+  document.getElementById('weekPlan').addEventListener('click', async (e)=>{
+    const row = e.target.closest('.wpRow[data-date]');
+    if(!row) return;
+    try{
+      const res = await fetch('/api/skip', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: row.dataset.date})
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      applyState(await res.json());
+      render();
+    }catch(err){
+      console.error('skip failed', err);
+      alert('could not save — is the backend running? (python3 server.py)');
+    }
+  });
+
+  loadAll();
+
+})();
+</script>
+</body>
+</html>
