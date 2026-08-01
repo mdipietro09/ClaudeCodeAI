@@ -1,6 +1,6 @@
 ================================================================================
 BONDchart — SESSION LOG / PROJECT MEMORY
-Last updated: 2026-07-29
+Last updated: 2026-08-01
 Read this first to be fully caught up.
 ================================================================================
 
@@ -31,7 +31,7 @@ FILES
                     MERGE_DIST live here now) — imported by run.py AND
                     forecast_plot.py so both charts show identical levels;
                     forecast chart also draws the white 100 line
-- data.csv          daily price data (user downloads this; ends 07/24/2026)
+- data.csv          daily price data (user downloads this; ends 07/31/2026)
 - macro_events.xlsx narrative for PAST weeks (was hard-coded in run.py)
 - forecast.xlsx     4-week FORECAST candles + narrative (was hard-coded too)
 - PLOT.html         output chart
@@ -76,9 +76,9 @@ WHAT I DID (SESSION OF 2026-07-23/24)
      section 4 "FORECAST TRACK RECORD" scores every vintage HIT/MISS,
      prints notes, flags misses lacking a note (that's a REVIEW problem),
      and prints a running hit-rate score.
-   Track record so far: 0/1 (vintage 2026-07-24 missed week 07-31 — anchor
-   was stale-data 97.66 vs revised 98.20, and ceasefire bullishness was
-   underweighted; lessons recorded in its note).
+   Track record so far: 1/1 (vintage 2026-07-24 week 07-31: mid-week MISS
+   flip-flopped to FINAL HIT at Friday close 97.18 — full saga + lessons in
+   its note).
 
 4) RAN ONE FULL UPDATE CYCLE (the "test")
    - New data: Fri 2026-07-24 close 97.66 (+0.48%) — old forecast was
@@ -108,13 +108,27 @@ WHAT I DID (SESSION OF 2026-07-23/24)
        "superseded by 2026-07-29 re-anchor (drift -0.62, hawkish FOMC)".
      * S/R shifted with new data: old S 98.36 + S 97.37 merged into
        S 98.02 (6 levels now); forecast texts updated to cite 98.02.
-   - CURRENT FORECAST (made_on 2026-07-29, anchor_close 97.93):
-       2026-08-07 🇮🇷 O=97.93 H=98.90 L=97.20 C=98.60  ceasefire signs, capped 98.90
-       2026-08-14 🇺🇸 O=98.60 H=99.10 L=97.60 C=98.00  truce tested, US CPI
-       2026-08-21 🇪🇺 O=98.00 H=98.50 L=96.90 C=97.30  Sept ECB pricing
-       2026-08-28 🇺🇸 O=97.30 H=98.00 L=96.40 C=96.80  Jackson Hole
-     Scenario arc: truce relief capped by hawkish Fed near 98.90 -> fade ->
-     downside toward 96.60 YTD low into September central-bank risk.
+   - SESSION 2026-08-01 UPDATE ("run all" cycle, data thru Fri 07-31):
+     Post-FOMC selloff extended all week: Thu 97.65, Fri 97.18 — weekly
+     candle O=98.56 H=98.90 L=97.18 C=97.18 (-1.04% w/w), CLOSED BELOW
+     the 97.33 support. Ceasefire still unsigned.
+     * 07-31 macro row refreshed to full-week outcome (final now).
+     * 07-24 vintage's 07-31 week: FINAL HIT confirmed at Friday close
+       (97.18 inside 97.00-98.45, red candle both). Track record 1/1.
+       Note rewritten as FINAL with the mid-week MISS->HIT saga + lessons.
+     * S/R shifted again: the merged S 98.02 re-split into S 98.36 +
+       S 97.33 (7 levels now). Close sits just below 97.33 = support break.
+     * Drift -0.75 -> REVIEW -> re-anchored; 07-29 vintage rows marked
+       "superseded by 2026-07-31 re-anchor (drift -0.75, post-FOMC selloff
+       extended, 97.33 support broken)".
+   - CURRENT FORECAST (made_on 2026-07-31, anchor_close 97.18):
+       2026-08-07 🇮🇷 O=97.18 H=98.10 L=96.60 C=97.80  truce signed, oversold bounce
+       2026-08-14 🇺🇸 O=97.80 H=98.30 L=96.90 C=97.30  truce tested, US CPI
+       2026-08-21 🇪🇺 O=97.30 H=97.80 L=96.30 C=96.70  Sept ECB pricing, test 96.60
+       2026-08-28 🇺🇸 O=96.70 H=97.40 L=95.90 C=96.30  Jackson Hole, ATL break risk
+     Scenario arc: oversold truce bounce capped below 98.36 by hawkish Fed
+     -> fade -> test and possible BREAK of the 96.60 YTD low into September
+     central-bank risk (bolder call than prior vintages: floor cracks).
 
 5) REWROTE THE ENTIRE NARRATIVE (user request: MORE FED)
    User: "the ECB is important but not more than the FED" — the narrative
@@ -143,12 +157,29 @@ WHAT I DID (SESSION OF 2026-07-23/24)
 
 RUN.PY INTERNALS WORTH REMEMBERING
 ----------------------------------
+- WEEKLY/DAILY TOGGLE [added 2026-08-01, user loves the plot]: a SMALL
+  custom pill switch (W ⇄ D) fixed top-left, injected as HTML/CSS/JS into
+  PLOT.html after write_html (TOGGLE_SNIPPET in run.py; div_id="chart",
+  JS calls Plotly.restyle on traces 0/1/3/4). User rejected plotly's
+  native updatemenus buttons as too bulky — keep the toggle tiny.
+  WEEKLY IS THE DRIVER: S/R, ATH/ATL, macro markers and forecast are all
+  computed weekly; daily is visualization only.
+  * Trace order matters for the buttons' visible masks: 0 weekly hist,
+    1 daily hist, 2 macro markers, 3 weekly fc, 4 daily fc, 5 fc icons
+    (2 and 5 stay visible in both views — weekly-anchored icons float
+    above the week's High in both). If you add a trace, UPDATE THE MASKS.
+  * weekly_to_daily() expands each weekly forecast candle into a
+    deterministic 5-bday path reproducing weekly OHLC exactly (first
+    open=O, last close=C, H/L touched once; bull = dip early rally late,
+    bear = mirror). Verified: resample of fcd == forecast rows.
+  * xaxis rangebreaks hide weekends; divider moved to last_date+1d
+    (Saturday = break edge) so it sits between candles in both views.
 - Weekly resample W-FRI: Open=first, High=max, Low=min, Close=last "Price".
 - S/R levels: cluster weekly Highs/Lows within TOLERANCE=0.40, keep clusters
   spanning > MIN_WEEK_SPAN=3 weeks, then merge R+S pools within
   MERGE_DIST=0.5 (touch-weighted price; mixed groups labeled "R/S").
   Current levels: R 104.47, R 103.71, R 102.23, R/S 101.05, S 99.40,
-  S 98.36, S 97.37. ATH 106.11 (green line), ATL 96.60 (red line),
+  S 98.36, S 97.33. ATH 106.11 (green line), ATL 96.60 (red line),
   white line at 100.
 - Macro markers: text-mode scatter, icon floats High+0.9 above each weekly
   candle; hover shows date + text + source. Events whose date is not a

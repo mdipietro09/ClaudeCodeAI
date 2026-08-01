@@ -49,7 +49,21 @@ candle = go.Candlestick(
     decreasing=dict(line=dict(color="#e74c3c")),
 )
 
-fig = go.Figure(data=[candle])
+# Daily view of the SAME history (toggled via the Weekly/Daily buttons;
+# weekly stays the driver — S/R, events and forecast are all computed weekly)
+candle_daily = go.Candlestick(
+    x=df.index,
+    open=df["Open"],
+    high=df["High"],
+    low=df["Low"],
+    close=df["Price"],
+    name="IT000553414 (daily)",
+    increasing=dict(line=dict(color="#2ecc71")),
+    decreasing=dict(line=dict(color="#e74c3c")),
+    visible=False,
+)
+
+fig = go.Figure(data=[candle, candle_daily])
 
 # ------------------------------------------------------------------
 # 4) FULL-CHART SUPPORT / RESISTANCE LINES — FILTERED
@@ -214,6 +228,49 @@ fig.add_trace(go.Candlestick(
     decreasing=dict(line=dict(color="#2980b9"), fillcolor="rgba(41,128,185,0.80)"),
 ))
 
+
+# ------------------------------------------------------------------
+# 7a) DAILY ADAPTATION OF THE WEEKLY FORECAST
+#     The forecast is MADE weekly (that's the driver); for the daily view
+#     each weekly candle is expanded into a deterministic 5-day path that
+#     reproduces the weekly OHLC exactly: first open = O, last close = C,
+#     H and L each touched on exactly one day. Bullish weeks dip early and
+#     rally late; bearish weeks pop early and fade late.
+# ------------------------------------------------------------------
+def weekly_to_daily(week_end, o, h, l, c):
+    days = pd.bdate_range(end=week_end, periods=5)
+    if c >= o:  # bullish: O -> dip to L -> rally through H -> settle C
+        closes = [o + 0.5 * (l - o), l, l + 0.55 * (h - l), h, c]
+        low_day, high_day = 1, 3
+    else:       # bearish: O -> pop to H -> fade through L -> settle C
+        closes = [o + 0.5 * (h - o), h, h - 0.55 * (h - l), l, c]
+        high_day, low_day = 1, 3
+    wick = 0.05 * (h - l)
+    candles, prev = [], o
+    for i, (d, cl) in enumerate(zip(days, closes)):
+        hi = min(h, max(prev, cl) + wick)
+        lo = max(l, min(prev, cl) - wick)
+        if i == high_day:
+            hi = h
+        if i == low_day:
+            lo = l
+        candles.append(dict(Date=d, Open=prev, High=hi, Low=lo, Close=cl))
+        prev = cl
+    return candles
+
+fcd = [c for f in forecast
+       for c in weekly_to_daily(f["week_end"], f["Open"], f["High"], f["Low"], f["Close"])]
+
+fig.add_trace(go.Candlestick(
+    x=[c["Date"] for c in fcd],
+    open=[c["Open"] for c in fcd], high=[c["High"] for c in fcd],
+    low=[c["Low"] for c in fcd], close=[c["Close"] for c in fcd],
+    name="Forecast (daily)",
+    increasing=dict(line=dict(color="#5dade2"), fillcolor="rgba(93,173,226,0.30)"),
+    decreasing=dict(line=dict(color="#2980b9"), fillcolor="rgba(41,128,185,0.80)"),
+    visible=False,
+))
+
 # Forecast direction icons
 fig.add_trace(go.Scatter(
     x=fc_icon_x, y=fc_icon_y,
@@ -224,7 +281,9 @@ fig.add_trace(go.Scatter(
 ))
 
 # Divider marking where history ends and forecast begins
-divider_x = last_date + pd.Timedelta(days=3)
+# (Saturday 00:00 = start of the weekend rangebreak, so in both views it
+# renders right between the last actual candle and the first forecast one)
+divider_x = last_date + pd.Timedelta(days=1)
 shapes.append(dict(
     type="line", xref="x", yref="paper",
     x0=divider_x, x1=divider_x, y0=0, y1=1,
@@ -276,6 +335,7 @@ fig.update_layout(
         rangeslider=dict(visible=True, bgcolor="#1a1b22"),
         gridcolor="#23242c",
         type="date",
+        rangebreaks=[dict(bounds=["sat", "mon"])],  # hide weekends (daily view)
     ),
     yaxis=dict(
         gridcolor="#23242c",
@@ -290,8 +350,58 @@ fig.update_layout(
 )
 
 # ------------------------------------------------------------------
-# 6) EXPORT
+# 9) EXPORT + WEEKLY/DAILY TOGGLE SWITCH (top-left)
+#    A small custom pill switch injected into the HTML (plotly's native
+#    updatemenus buttons are too bulky — user asked for a small toggle).
+#    It flips visibility of traces 0/1 (history) and 3/4 (forecast);
+#    traces 2/5 (macro + forecast icons) are weekly-anchored and stay on.
 # ------------------------------------------------------------------
 OUT_PATH = "PLOT.html"
-fig.write_html(OUT_PATH, include_plotlyjs="cdn")
+fig.write_html(OUT_PATH, include_plotlyjs="cdn", div_id="chart")
+
+TOGGLE_SNIPPET = """
+<style>
+#wd-toggle {
+  position: fixed; top: 10px; left: 14px; z-index: 999;
+  display: flex; align-items: center; gap: 7px;
+  font: 11px sans-serif; color: #8a8d98; user-select: none; cursor: pointer;
+}
+#wd-toggle .lbl.on { color: #eaeaea; font-weight: 600; }
+#wd-track {
+  width: 30px; height: 16px; border-radius: 8px;
+  background: #2b2d38; position: relative; transition: background .15s;
+}
+#wd-knob {
+  width: 12px; height: 12px; border-radius: 50%; background: #5dade2;
+  position: absolute; top: 2px; left: 2px; transition: left .15s;
+}
+#wd-toggle.daily #wd-knob { left: 16px; }
+</style>
+<div id="wd-toggle">
+  <span class="lbl on" id="wd-w">W</span>
+  <div id="wd-track"><div id="wd-knob"></div></div>
+  <span class="lbl" id="wd-d">D</span>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('wd-toggle'), daily = false;
+  el.addEventListener('click', function () {
+    daily = !daily;
+    el.classList.toggle('daily', daily);
+    document.getElementById('wd-w').classList.toggle('on', !daily);
+    document.getElementById('wd-d').classList.toggle('on', daily);
+    Plotly.restyle('chart',
+      {visible: daily ? [false, true, false, true] : [true, false, true, false]},
+      [0, 1, 3, 4]);
+  });
+})();
+</script>
+"""
+
+with open(OUT_PATH, "r", encoding="utf-8") as fh:
+    html = fh.read()
+html = html.replace("</body>", TOGGLE_SNIPPET + "</body>")
+with open(OUT_PATH, "w", encoding="utf-8") as fh:
+    fh.write(html)
+
 print(f"\nSaved: {OUT_PATH}")
