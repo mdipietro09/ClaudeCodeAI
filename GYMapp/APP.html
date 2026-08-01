@@ -267,8 +267,11 @@
     else{ selected.add(id); chip.classList.add('sel'); }
   });
 
+  // local-time YYYY-MM-DD (toISOString is UTC and shifts the date after 00:00 local)
+  const localISO = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+
   const logDate = document.getElementById('logDate');
-  logDate.value = new Date().toISOString().slice(0,10);
+  logDate.value = localISO(new Date());
 
   // ---------- backend API ----------
   function applyState(d){
@@ -348,7 +351,7 @@
     const dates = new Set(entries.map(e=>e.date));
     let streak=0; let d=new Date(); d.setHours(0,0,0,0);
     while(true){
-      const iso = d.toISOString().slice(0,10);
+      const iso = localISO(d);
       if(dates.has(iso)){ streak++; d.setDate(d.getDate()-1); } else break;
     }
     return streak;
@@ -415,7 +418,7 @@
     let rows = '';
     plan.forEach((p,i)=>{
       const d = new Date(monday); d.setDate(monday.getDate()+i);
-      const iso = d.toISOString().slice(0,10);
+      const iso = localISO(d);
       const rest = p.groups.length===0;
       const isToday = d.getTime()===today.getTime();
       const future = d>today;
