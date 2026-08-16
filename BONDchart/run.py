@@ -98,7 +98,7 @@ for lvl in merged_levels:
     ))
     annotations.append(dict(
         x=x_end, y=lvl["price"], xref="x", yref="y",
-        text=f"🟨{lvl['kind']} {lvl['price']:.2f}", showarrow=False,
+        text=f"🟨{lvl['kind']} {lvl['price']:.1f}", showarrow=False,
         xanchor="left", font=dict(color="#f1c40f", size=11),
     ))
 

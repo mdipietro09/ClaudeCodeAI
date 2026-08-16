@@ -1,6 +1,6 @@
 ================================================================================
 BONDchart — SESSION LOG / PROJECT MEMORY
-Last updated: 2026-08-01
+Last updated: 2026-08-05
 Read this first to be fully caught up.
 ================================================================================
 
@@ -26,6 +26,12 @@ FILES
                     green/red; ✅/❌ verdict markers whose hover shows the
                     post-mortem note; colors validated for CVD+contrast on the
                     dark surface — VINTAGE_LADDER, don't go darker than #3465ad)
+                    [2026-08-01] now has the same W⇄D pill toggle as PLOT.html
+                    (snippet duplicated in forecast_plot.py): daily actuals are
+                    trace 1 (visible=False), toggle restyles traces [0,1] ONLY —
+                    vintage bands/lines/verdicts stay weekly in both views.
+                    Weekend rangebreaks added; divider moved to last_week_end+1d
+                    (Saturday); title x=0.06 to clear the fixed toggle.
 - update.py         maintenance checker (run after each data.csv refresh)
 - sr_levels.py      shared S/R clustering/merging (TOLERANCE, MIN_WEEK_SPAN,
                     MERGE_DIST live here now) — imported by run.py AND
@@ -121,14 +127,35 @@ WHAT I DID (SESSION OF 2026-07-23/24)
      * Drift -0.75 -> REVIEW -> re-anchored; 07-29 vintage rows marked
        "superseded by 2026-07-31 re-anchor (drift -0.75, post-FOMC selloff
        extended, 97.33 support broken)".
-   - CURRENT FORECAST (made_on 2026-07-31, anchor_close 97.18):
-       2026-08-07 🇮🇷 O=97.18 H=98.10 L=96.60 C=97.80  truce signed, oversold bounce
-       2026-08-14 🇺🇸 O=97.80 H=98.30 L=96.90 C=97.30  truce tested, US CPI
-       2026-08-21 🇪🇺 O=97.30 H=97.80 L=96.30 C=96.70  Sept ECB pricing, test 96.60
-       2026-08-28 🇺🇸 O=96.70 H=97.40 L=95.90 C=96.30  Jackson Hole, ATL break risk
-     Scenario arc: oversold truce bounce capped below 98.36 by hawkish Fed
-     -> fade -> test and possible BREAK of the 96.60 YTD low into September
-     central-bank risk (bolder call than prior vintages: floor cracks).
+   - SESSION 2026-08-05 UPDATE ("update all" cycle, data thru Wed 08-05):
+     THE BIG MISS: ceasefire SIGNED Aug 2 -> BTP ripped 98.20/98.90, Wed
+     intraday high 99.36, close 98.90 — blew through the 07-31 vintage's
+     08-07 fc High 98.10 AND the 98.36 resistance by Tuesday. User called
+     it ("you fucked up") — post-mortem written on the 08-07 row:
+     direction right (truce bounce), magnitude badly wrong; PROVISIONAL
+     MISS (week ends Friday — remember the flip-flop rule). LESSONS:
+     (1) after a capitulation week that breaks support, relief rallies
+     overshoot — don't cap the bounce at the nearest resistance;
+     (2) never make the bold call (ATL break) AT the local extreme =
+     recency bias; boldness belongs mid-trend.
+     * 08-07 macro row added (truce signed, week in progress — REFRESH
+       to outcomes next update, incl. Fri payrolls).
+     * S/R re-merged AGAIN: S 98.36 + S 97.33 -> single S 97.96
+       (6 levels; this 98.3x/97.3x pair keeps splitting/merging).
+     * Drift +1.72 -> re-anchor; 07-31 vintage upcoming rows marked
+       "superseded by 2026-08-05 re-anchor". Track record 1/2 (50%).
+     * GOTCHA FIXED: macro_events.xlsx `date` col was 31 strings + my
+       appended Timestamp -> update.py sort_values crashed (str vs
+       datetime). Now ALL dates normalized to datetime on write; when
+       appending xlsx rows, pd.to_datetime the whole column first.
+   - CURRENT FORECAST (made_on 2026-08-05, anchor_close 98.90):
+       2026-08-14 🇺🇸 O=98.90 H=99.60 L=98.20 C=99.05  truce holds, US CPI, 99.40 caps
+       2026-08-21 🇪🇺 O=99.05 H=99.45 L=98.20 C=98.55  Sept-hike pricing firms, fade
+       2026-08-28 🇺🇸 O=98.55 H=99.00 L=97.70 C=98.00  Jackson Hole, drift to 97.96
+       2026-09-04 🇪🇺 O=98.00 H=98.60 L=97.30 C=97.60  run-up to 10 Sept ECB, 97.96 holds
+     Scenario arc: truce-rally momentum stalls under 99.40 -> grind lower
+     into the September central-bank gauntlet; 97.96 tested but HOLDS
+     (deliberately no floor-break call — see lesson 2 above).
 
 5) REWROTE THE ENTIRE NARRATIVE (user request: MORE FED)
    User: "the ECB is important but not more than the FED" — the narrative
@@ -152,6 +179,8 @@ WHAT I DID (SESSION OF 2026-07-23/24)
 6) CHART COSMETICS (user requests)
    - Removed y-axis title "Price" (user: "like bro, i know it's the price").
    - Removed the legend entirely (showlegend=False).
+   - [2026-08-05] S/R labels rounded to 1 decimal (S 98.0) in BOTH charts;
+     ATH/ATL/100 labels stay at 2 decimals (user only asked for S/R).
    => Keep new chart elements legend-free and label-light; user wants a
       clean chart and knows what everything is.
 

@@ -79,6 +79,19 @@ fig.add_trace(go.Candlestick(
     decreasing=dict(line=dict(color="#e74c3c")),
 ))
 
+# Daily view of the same actuals (toggled via the W/D switch; forecast
+# vintages and verdicts stay weekly — daily is visualization only).
+# MUST be trace 1: the toggle snippet restyles traces [0, 1].
+win_daily = df[df.index >= window_start]
+fig.add_trace(go.Candlestick(
+    x=win_daily.index, open=win_daily["Open"], high=win_daily["High"],
+    low=win_daily["Low"], close=win_daily["Price"],
+    name="actual (daily)",
+    increasing=dict(line=dict(color="#2ecc71")),
+    decreasing=dict(line=dict(color="#e74c3c")),
+    visible=False,
+))
+
 # ------------------------------------------------------------------
 # One band + close-line per forecast vintage, plus verdict markers
 # ------------------------------------------------------------------
@@ -180,7 +193,7 @@ for lvl in compute_levels(weekly):
     ))
     annotations.append(dict(
         x=x1, y=lvl["price"], xref="x", yref="y",
-        text=f"🟨{lvl['kind']} {lvl['price']:.2f}", showarrow=False,
+        text=f"🟨{lvl['kind']} {lvl['price']:.1f}", showarrow=False,
         xanchor="left", font=dict(color="#f1c40f", size=11),
     ))
 
@@ -195,8 +208,9 @@ annotations.append(dict(
     xanchor="left", font=dict(color="#ffffff", size=11),
 ))
 
-# divider where actual data ends
-divider_x = last_week_end + pd.Timedelta(days=3)
+# divider where actual data ends (Saturday = weekend-rangebreak edge, so it
+# sits between candles in both the weekly and daily views — same as run.py)
+divider_x = last_week_end + pd.Timedelta(days=1)
 shapes.append(dict(
     type="line", xref="x", yref="paper",
     x0=divider_x, x1=divider_x, y0=0, y1=1,
@@ -217,13 +231,65 @@ fig.update_layout(
     template="plotly_dark",
     paper_bgcolor="#0e0f13", plot_bgcolor="#0e0f13",
     font=dict(color="#eaeaea"),
-    title=dict(text=title, font=dict(size=13, color="#aab4c0"), x=0.01),
+    # x shifted right to clear the fixed W/D toggle pinned at the top-left
+    title=dict(text=title, font=dict(size=13, color="#aab4c0"), x=0.06),
     margin=dict(t=50, r=110, b=40, l=50),
-    xaxis=dict(rangeslider=dict(visible=False), gridcolor="#23242c", type="date"),
+    xaxis=dict(
+        rangeslider=dict(visible=False), gridcolor="#23242c", type="date",
+        rangebreaks=[dict(bounds=["sat", "mon"])],  # hide weekends (daily view)
+    ),
     yaxis=dict(gridcolor="#23242c", side="right", dtick=1, tick0=0, showgrid=True),
     shapes=shapes, annotations=annotations, showlegend=False,
 )
 
-fig.write_html(OUT_PATH, include_plotlyjs="cdn")
+fig.write_html(OUT_PATH, include_plotlyjs="cdn", div_id="chart")
+
+# Same tiny W ⇄ D pill switch as PLOT.html (see TOGGLE_SNIPPET in run.py);
+# here it only flips the actual candles: trace 0 (weekly) <-> trace 1 (daily).
+TOGGLE_SNIPPET = """
+<style>
+#wd-toggle {
+  position: fixed; top: 10px; left: 14px; z-index: 999;
+  display: flex; align-items: center; gap: 7px;
+  font: 11px sans-serif; color: #8a8d98; user-select: none; cursor: pointer;
+}
+#wd-toggle .lbl.on { color: #eaeaea; font-weight: 600; }
+#wd-track {
+  width: 30px; height: 16px; border-radius: 8px;
+  background: #2b2d38; position: relative; transition: background .15s;
+}
+#wd-knob {
+  width: 12px; height: 12px; border-radius: 50%; background: #5dade2;
+  position: absolute; top: 2px; left: 2px; transition: left .15s;
+}
+#wd-toggle.daily #wd-knob { left: 16px; }
+</style>
+<div id="wd-toggle">
+  <span class="lbl on" id="wd-w">W</span>
+  <div id="wd-track"><div id="wd-knob"></div></div>
+  <span class="lbl" id="wd-d">D</span>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('wd-toggle'), daily = false;
+  el.addEventListener('click', function () {
+    daily = !daily;
+    el.classList.toggle('daily', daily);
+    document.getElementById('wd-w').classList.toggle('on', !daily);
+    document.getElementById('wd-d').classList.toggle('on', daily);
+    Plotly.restyle('chart',
+      {visible: daily ? [false, true] : [true, false]},
+      [0, 1]);
+  });
+})();
+</script>
+"""
+
+with open(OUT_PATH, "r", encoding="utf-8") as fh:
+    html = fh.read()
+html = html.replace("</body>", TOGGLE_SNIPPET + "</body>")
+with open(OUT_PATH, "w", encoding="utf-8") as fh:
+    fh.write(html)
+
 print(f"{len(vintages)} vintage(s), track record {hits}/{scored} hit")
 print(f"Saved: {OUT_PATH}")
