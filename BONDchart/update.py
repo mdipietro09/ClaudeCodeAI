@@ -16,8 +16,9 @@ It reports:
                          close has drifted since the forecast was made
      Verdict: KEEP the forecast or REVIEW/RE-ANCHOR it.
 
-It changes nothing by itself — edit macro_events.xlsx / forecast.xlsx by hand
-(or ask Claude) based on the report, then rebuild with `python3 run.py`.
+It changes nothing by itself — edit macro_events.xlsx / forecast.xlsx by hand,
+or just run `python3 run.py`: its AI maintenance step (local Ollama model, see
+the `llm` variable at the top of run.py) applies the fixes and rebuilds.
 """
 
 import pandas as pd

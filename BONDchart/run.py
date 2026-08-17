@@ -2,11 +2,36 @@
 IT000553414 — Weekly candlestick chart with filtered, full-width Support/Resistance
 levels + a full price-level (100, 101, 102...) reference grid on the y-axis.
 
-Requires: pandas, plotly
+run.py is the MASTER script — the only command needed:
+
+    python3 run.py
+        AI maintenance (Ollama) -> PLOT.html -> FORECAST.html
+
+    python3 run.py "the forecast is really bad so do it again"
+        Same, but the quoted instructions are passed to the local model
+        (they force a fresh forecast vintage and steer all the rewrites).
+
+Requires: pandas, plotly, and a running Ollama server (fully local, free).
 """
+
+# ------------------------------------------------------------------
+# 0) LOCAL LLM — the Ollama model that maintains the narrative
+#    (macro events, forecast post-mortems, re-anchoring).
+#    Change ONLY this line to switch models.
+# ------------------------------------------------------------------
+llm = 'qwen3'
+
+import sys
 
 import pandas as pd
 import plotly.graph_objects as go
+
+from ai_maintenance import run_ai_maintenance
+
+# optional free-text instructions from the terminal
+instructions = " ".join(sys.argv[1:]).strip()
+
+run_ai_maintenance(llm, instructions)
 
 # ------------------------------------------------------------------
 # 1) LOAD & CLEAN
@@ -405,3 +430,10 @@ with open(OUT_PATH, "w", encoding="utf-8") as fh:
     fh.write(html)
 
 print(f"\nSaved: {OUT_PATH}")
+
+# ------------------------------------------------------------------
+# 10) FORECAST REVIEW CHART — run.py is the master script, so it also
+#     rebuilds FORECAST.html (importing forecast_plot executes it).
+# ------------------------------------------------------------------
+print("\nBuilding forecast review chart...")
+import forecast_plot  # noqa: E402  (script-style module: import = run)

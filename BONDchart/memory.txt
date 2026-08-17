@@ -1,8 +1,44 @@
 ================================================================================
 BONDchart — SESSION LOG / PROJECT MEMORY
-Last updated: 2026-08-05
+Last updated: 2026-08-16
 Read this first to be fully caught up.
 ================================================================================
+
+BIG CHANGE [2026-08-16]: THE PROJECT NOW RUNS ON OLLAMA (LOCAL, FREE)
+---------------------------------------------------------------------
+The "ask Claude" step of the routine (write macro rows, refresh latest week's
+text, post-mortem notes on misses, re-anchor forecast) is now AUTOMATED via a
+local Ollama model. New file ai_maintenance.py; run.py calls
+run_ai_maintenance(llm) as step 0 before building the chart, so
+`python3 run.py` = the whole cycle (maintenance + rebuild).
+- MODEL SWITCH: the ONLY line to change is `llm = 'qwen2.5'` at the top of
+  run.py. Ollama HTTP API at localhost:11434 via stdlib urllib (no pip deps —
+  pip is broken in this env, remember).
+- If Ollama isn't running, the AI step is SKIPPED with a warning and the chart
+  still builds from the existing xlsx files.
+- ai_maintenance.py logic mirrors update.py (same REANCHOR_TOLERANCE=0.30,
+  same HIT/MISS scoring): fills missing macro weeks, refreshes the latest
+  data week's event row every run, writes post-mortem notes on noteless
+  MISSes (PROVISIONAL prefix if week incomplete), and on REVIEW appends a new
+  4-week vintage + marks old upcoming rows superseded (never deletes).
+  Forecast candles are validated/clamped (sane_candle: H/L consistent, opens
+  chained onto last close, anchor±6 bound). SAME-DAY RE-ANCHOR GOTCHA: if new
+  made_on <= live made_on, +1 hour is added so vintages never merge.
+- update.py is still the read-only checker; its docstring now points at run.py.
+- [2026-08-16b] run.py IS THE MASTER: it ends with `import forecast_plot`, so
+  one command rebuilds PLOT.html AND FORECAST.html — never tell the user to
+  run multiple files. It also takes optional free-text instructions:
+  `python3 run.py "the forecast is really bad so do it again"` — the string
+  is injected into every prompt AND always forces a fresh forecast vintage
+  (supersede note records the instruction). With a 7B model the instruction
+  must be repeated right next to the forecast rules or it gets ignored
+  (already done in ai_maintenance.py — keep it there).
+- Prompt hygiene learned testing qwen2.5 (7B): it copies literal placeholders
+  ("site.com", "ICON") — prompts use real examples + a source guard; icon
+  falls back to ↔️ if missing. Text quality/factuality is below Claude's
+  (qwen2.5 doesn't know real 2026 events — it writes plausible narrative from
+  the price action + context in the prompt); user accepted this trade-off for
+  fully-local/free.
 
 WHAT THIS PROJECT IS
 --------------------
