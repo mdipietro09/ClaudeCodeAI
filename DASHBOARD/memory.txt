@@ -1,0 +1,254 @@
+AI AGENT OFFICE — PROJECT MEMORY
+Read this first at the start of any session on this project. Last updated: 2026-08-21 (later).
+
+WEB_SEARCH TOOL RELIABILITY (backend/tools/web_search.py) — FIXED 2026-08-21:
+Boss reported "the web search tool doesn't work." Root cause, confirmed by
+direct testing: DuckDuckGo Lite (and Mojeek, tried as an alt) intermittently
+serve a CAPTCHA/"anomaly" bot-challenge page instead of real results to
+automated (urllib) requests — NOT a code bug, an anti-bot measure, and it's
+probabilistic/flaky (in one test run: 1 of 3 identical-style queries got
+real results, the other 2 got silently blocked). The ORIGINAL bug was that
+the old code couldn't tell "genuinely zero results" apart from "got served
+a bot-challenge page" — both produced "No results found for: X", which is
+actively misleading (agent thinks it searched and found nothing, when it
+never actually searched).
+  FIX: _ddg_lite() now explicitly detects the challenge page (checks for
+  "anomaly.js" / challenge-form markers) and returns None instead of a fake
+  empty result; run() retries once with a 1.5s backoff; if DDG still won't
+  cooperate, it falls back to Wikipedia's official search API
+  (en.wikipedia.org/w/api.php, a real documented API — never bot-blocked,
+  confirmed in testing). Wikipedia fallback results are explicitly prefixed
+  "(DuckDuckGo was unavailable, falling back to Wikipedia:)" so agents (and
+  the Boss reading the 🔧 tool-call chat lines / final answers) know the
+  source. Only if BOTH fail does it return an honest "search unavailable"
+  message — never a silent false negative.
+  CAVEAT: Wikipedia fallback is narrower than general web search (no
+  pricing pages, no competitor blogs, no news) — fine for general-knowledge
+  grounding, weaker for e.g. "current competitor pricing" type queries. If
+  this keeps being a pain point, the durable long-term fix is a real search
+  API with a free-tier key (Brave Search API, Tavily, etc.) via an env var
+  — NOT implemented, would be a deliberate scope/dependency decision to
+  raise with the Boss first (still stdlib/no-pip-install otherwise, an API
+  key doesn't need a new pip dependency though, just urllib + a key).
+  Verified end-to-end through a real agent tool-call loop after the fix
+  (queen searched -> got a Wikipedia-fallback hit on "Hungryroot" -> fetched
+  the page -> gave a real grounded 2-sentence answer, no more silent
+  failures).
+
+AGENT ROSTER HAS BEEN HAND-EDITED BY THE BOSS (2026-08-21): the Boss directly
+edited backend/agents/*.py to change ids/names/emoji. As of last check the
+live roster (via GET /api/state) is: queen (was finley/Finley, 💰->👸🏻),
+bro (was mave/Mave, 📣->🤵‍♂️), lawyer (was lex/Lex, ⚖️->👩🏻‍💼, note: name
+field is literally lowercase "lawyer" — looked like it might be an
+unintentional typo, flagged to Boss once, not yet confirmed either way),
+manager (unchanged, 🗂️->🧙‍♂️). IMPORTANT: don't assume finley/mave/lex ids
+still work for @mentions — check backend/agents/*.py or GET /api/state for
+current ids before referencing an agent by name in code or conversation.
+Roles/specialties (financial/marketing/legal/manager) are unchanged, only
+ids/display names/emoji were edited by the Boss.
+
+REMINDER TAUGHT TO THE BOSS THIS SESSION: editing any file under
+backend/agents/ or backend/tools/ does NOT take effect until the backend
+process is restarted (load_agents()/load_tools() only run once at startup).
+A browser refresh alone re-polls the SAME running process and won't show
+the change. Restart = same effect as POST /api/reset (wipes chat + agent
+history) PLUS reloads the .py files (which Reset alone does not do).
+
+MANAGER AGENT (backend/agents/manager.py) — added because the Boss found
+3 separate specialist answers "confusing" to parse. Manager 🗂️ has
+"tools": [] (deliberately no tools — pure synthesis, no new research),
+order=10 (speaks LAST in @all rounds, after finley/mave/lex, so there's
+something to summarize), and a system prompt that forces a strict format:
+1-sentence bottom line + up to 4 bullets (one per teammate, plain English,
+no jargon) + explicit flag if teammates disagreed or something needs the
+Boss's call. It gets the full chat transcript like any agent (nothing
+special server-side needed — build_messages() already includes everyone's
+turns), so it "reads the room" for free.
+  _shared.py was split into TEAM_RULES (base, always included) + TOOL_RULES
+  (tool-usage instructions, only appended by agents that actually have
+  tools) — Manager includes TEAM_RULES only. financial.py/marketing.py/
+  legal.py were updated to `+ TEAM_RULES + TOOL_RULES`. _template.py shows
+  both patterns with a comment on which to use.
+  KNOWN CAVEAT (observed in testing pre-2026-08-21, may be less visible now):
+  Manager would write a bullet for a teammate whose real reply was just the
+  old tool-call-limit fallback string, inferring a plausible-sounding point
+  from context rather than admitting they didn't really answer. Since the
+  tool-call-limit overflow now forces a REAL prose answer instead of a
+  canned string (see TOOL-CALL LIMIT entry below), this specific failure
+  mode is probably less likely to trigger — but hasn't been re-tested
+  against the Manager specifically. Watch for it if it comes up again.
+
+TOOL-CALL LIMIT (backend/server.py run_agent_turn(), cap = 6 iterations,
+line ~171) — FIXED 2026-08-21: previously, hitting the 6-call cap mid-task
+produced a canned fallback string "(I hit the tool-call limit before
+finishing — ask me to continue.)" in the chat, which the Boss explicitly
+said was confusing/unwanted. Now, when the loop exhausts its 6 iterations,
+the backend appends ONE more user-role message telling the agent it's out
+of tool calls and must answer NOW in plain prose using whatever it already
+gathered (saying plainly if incomplete), then calls Ollama ONE final time
+WITH TOOLS DISABLED (tools=None) so it can't just try to call another tool
+and loop again. That forced final call's prose is what gets pushed to chat.
+If even THAT comes back empty (rare), the fallback text is now just
+"I ran out of tool calls and don't have enough to go on yet for this one."
+— still plain-English, not the old parenthetical-instruction-sounding
+string. Verified in testing (temporarily lowered cap to 2 to force it):
+agent gave a real reasoned answer ("I couldn't find data... could you
+share the numbers?") instead of the canned message. Cap itself is still 6
+in normal operation — only the OVERFLOW behavior changed, not the budget.
+
+CAUTION: this whole project directory is untracked by git (no commits, just
+"Untracked files: ./" in git status) — there is NO version-history safety
+net. README.md was found deleted mid-session once already (cause unknown,
+not traced to an assistant action) and had to be reconstructed from memory.
+Consider suggesting `git init` + an initial commit next time it comes up, or
+at least be extra careful with any destructive filesystem operation here.
+
+WHAT THIS IS
+A 2D top-down "office" dashboard where 3 real AI agents (Finley/Financial,
+Mave/Marketing, Lex/Legal) work as a team on tasks the Boss (the user) gives
+them in a chat panel. Agents are real LLM calls to local Ollama (qwen3),
+not scripted. Their avatars walk around a pixel-art office based on live
+status pulled from a Python backend. Originally requested as: research +
+launch a new product as a team.
+
+HOW TO RUN (two terminals)
+  npm run backend   -> python3 backend/server.py   (port 8000, stdlib only, no pip installs)
+  npm run dev       -> vite dev server               (port 5173, http://localhost:5173)
+Requires `ollama serve` running with `qwen3` pulled (qwen3:latest).
+Vite proxies /api -> localhost:8000 (see vite.config.js).
+
+STACK
+Frontend: React + Tailwind v4 + Framer Motion (JS only, per user's explicit
+  instruction — no TS).
+Backend: Python 3.8-compatible stdlib only (http.server, urllib, no Flask/
+  requests/pip installs at all) — per user's explicit "plug and play" requirement.
+
+THE CORE DESIGN PRINCIPLE: PLUG-AND-PLAY
+The user explicitly wants to hand-edit agents/tools with zero frontend
+changes needed. This drove the architecture:
+  - backend/agents/*.py — one file per agent, each exports an AGENT dict
+    (id, name, role, emoji, color, order, optional model, system prompt,
+    optional "tools" allowlist). Auto-discovered on server startup by
+    scanning the folder. Files starting with "_" are ignored (_shared.py
+    holds TEAM_RULES common text, _template.py is a copy-paste starter).
+  - backend/tools/*.py — same pattern for tools: define TOOL (or TOOLS list)
+    + run(args) (or run_<name>(args)). Auto-discovered. Current tools:
+    web_search (DuckDuckGo lite, no API key), fetch_url, calculate (safe AST
+    arithmetic, no eval()), save_note/read_notes (shared notepad, persists
+    to backend/workspace/notes.md).
+  - The React frontend hardcodes NOTHING about agent identity — it reads the
+    whole roster (name/emoji/color/desk/status) from GET /api/state and
+    renders whatever comes back. Adding/removing an agent .py file + backend
+    restart is the entire workflow; no frontend edit needed. Verified working
+    (copied _template.py -> a 4th agent appeared automatically, then removed).
+
+BACKEND API (backend/server.py, single file, ThreadingHTTPServer)
+  GET  /api/state    -> { agents: [...], chat: [...], busy: <agentId|null> }
+  POST /api/message   { text } -> starts an async round (background thread),
+                        returns immediately; frontend polls /api/state
+  POST /api/reset      -> clears chat + resets all agents to idle; 409 if busy
+All state is in-memory globals under a threading.Lock (STATE dict). No DB.
+Restarting the backend wipes chat/history (by design, dev tool not prod).
+
+MESSAGE ROUTING (@ rules — this was iterated on, don't regress it)
+  @<agentid>          -> ONLY that agent replies (no fallback to team if
+                          typo'd — unknown tag gets a system error message
+                          listing valid @-tags)
+  @all / @team / @everyone -> full team round, in `order` field sequence,
+                          each agent sees Boss's message + teammates' replies
+                          so far in the SAME round (chained context)
+  untagged             -> goes ONLY to agents currently status="waiting"
+                          (i.e. replying to a question someone asked you);
+                          if nobody is waiting, system hint message telling
+                          you to tag someone
+
+ADDRESSING THE USER
+  The user is "Boss", NOT "CEO". All agent prompts + transcript labels use
+  "Boss". (Renamed after an early version used CEO/Bob — don't reintroduce
+  either.) Internal wire field is still literally "ceo" as the sender id in
+  chat messages (frontend cosmetic only) — intentionally NOT renamed, low
+  value / high busywork.
+
+TOOL USE (Ollama native tool-calling, qwen3 supports it)
+  backend/server.py: run_agent_turn() loop, up to 6 tool-call iterations
+  per turn before forcing a prose answer. Ollama call includes think:false
+  (skip qwen3 reasoning phase, much faster ~1-3s replies) and a `tools` list
+  built from agent_tools(agent) (all discovered tools unless AGENT["tools"]
+  restricts it). Every tool call is pushed into the chat log as
+  from:"tool", agent:<id> and rendered as a small "🔧 name(args)" line in
+  ChatPanel.jsx so the Boss can watch what they're doing.
+  Known quirk: qwen3 (small model) sometimes gets the ARITHMETIC WRONG even
+  when the calculator tool returns the right number (e.g. reported a monthly
+  figure as annual once) — tool plumbing is solid, model reasoning on top of
+  correct tool output is not guaranteed. Bigger model = better judgement,
+  same code (just change "model" in an AGENT dict or MODEL/env var).
+
+OFFICE MOVEMENT LOGIC (this has been iterated on multiple times — current
+final rules, in src/components/AgentAvatar.jsx, precedence top to bottom):
+  1. status=="error"                    -> walks to server rack (ERROR_SPOTS)
+  2. status=="working" AND usingTool    -> walks to its own desk (workstation)
+  3. status=="working" AND NOT usingTool (i.e. just chatting/reasoning,
+     no tool call in flight)            -> walks to meeting room table
+  4. inMeeting==true (mid @all chained round) OR meetingUntil in the future
+     (5-min linger after an @all round ends)  -> meeting room table
+  5. status=="idle"                     -> stays at its OWN desk until it's
+     been idle >= 5 minutes (IDLE_TO_BREAK_MS), THEN walks to break room couch
+  6. status=="waiting" (outside a meeting) -> freezes in place, ❓ bubble
+  A fresh direct task (@name) cancels a lingering agent's meetingUntil so it
+  leaves the meeting to go work. Movement is real A* pathfinding on a 30x18
+  grid (src/office/pathfinding.js + layout.js), tweened at constant px/s
+  with Framer Motion, interruptible mid-walk.
+
+  Agent-side fields driving this (all served in GET /api/state per agent):
+  status ("working"|"waiting"|"error"|"idle"), task, statusSince (ms epoch),
+  history[] (past tasks w/ completed|failed + durationMs), inMeeting (bool),
+  meetingUntil (ms epoch, 0 = not lingering), usingTool (bool).
+
+  SESSION-START / RESET BOOT STATE (backend/server.py: reset_to_boot_state()):
+  On server startup (load_agents) AND on POST /api/reset, every agent is
+  seeded with meetingUntil = now + 5min (BOOT_MEETING_MS) so the frontend's
+  existing "lingering" rule sends them straight to the meeting room for a
+  5-minute kickoff huddle — status is still literally "idle", just the
+  meeting-room rule takes precedence while meetingUntil is in the future.
+  ALSO statusSince is backdated to (now - BREAK_GRACE_MS) at boot, so the
+  instant the 5-min meeting ends, the idle break-room grace period is
+  already "used up" and they walk straight to the break room (no second
+  5-min wait at the desk). This was a deliberate ask: "active but not using
+  tools" at session start = meeting room for 5 min, then idle -> break room
+  immediately. Any LATER idle period (after a real task) is unaffected and
+  gets its own full 5-min at-desk grace as before — only the boot/reset
+  idle period skips it. Backend constants: BREAK_GRACE_MS and
+  BOOT_MEETING_MS in server.py (both 5*60*1000); keep frontend's
+  IDLE_TO_BREAK_MS in AgentAvatar.jsx in sync if either changes (currently
+  both hardcoded to 5 min in their respective files, not shared/config'd).
+
+THEME
+  Pure black (#000) background, neutral-800/900/950 panels, per-agent accent
+  colors only splash of color besides status dots (green=working,
+  yellow=waiting, red=error, indigo=idle). User explicitly asked for "black"
+  theme — don't regress to the earlier slate/dark-blue palette.
+
+FILES THAT MATTER MOST IF RESUMING WORK
+  backend/server.py        orchestrator, HTTP API, tool loop, all state logic
+  backend/agents/*.py      the 3 agents (financial.py/marketing.py/legal.py)
+                           + _shared.py (common prompt rules) + _template.py
+  backend/tools/*.py       web_search / fetch_url / calculator / notes
+  backend/workspace/notes.md   agents' shared persistent notepad (real file)
+  src/hooks/useTeam.js      polls /api/state every 1.5s, posts /api/message,
+                           /api/reset — the ONLY place frontend talks to backend
+  src/components/AgentAvatar.jsx   movement precedence logic (see above)
+  src/components/ChatPanel.jsx     chat UI incl. tool-call 🔧 lines
+  src/office/layout.js      grid, zones (desks/meeting/breakroom/server),
+                           DESKS / MEETING_SPOTS / IDLE_SPOTS / ERROR_SPOTS
+  README.md                kept in sync with all of the above as we went —
+                           check it for anything this file doesn't cover
+
+THINGS NOT DONE / POSSIBLE NEXT STEPS (no commitment, just ideas if asked)
+  - No persistence across backend restarts (chat/history is in-memory only)
+  - No websocket, still polling every 1.5s (fine at this scale)
+  - No auth/multi-user — single Boss, localhost only, not hardened for
+    exposure beyond localhost
+  - Tool loop cap is 6 iterations; could surface that better in the UI if
+    an agent hits it
+  - Only 3 agents defined today (Finley/Mave/Lex) — engineering/ada template
+    was created then deleted during testing, not a real 4th teammate
