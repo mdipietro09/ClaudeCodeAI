@@ -16,7 +16,7 @@ npm run backend   # terminal 1: Python agent server (stdlib only, no pip install
 npm run dev       # terminal 2: frontend on http://localhost:5173
 ```
 
-Requires `ollama serve` running with `qwen3` pulled.
+Requires `ollama serve` running with `qwen3.6`.
 
 ## Status → behavior
 

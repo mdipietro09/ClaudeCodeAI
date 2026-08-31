@@ -106,7 +106,7 @@ at least be extra careful with any destructive filesystem operation here.
 WHAT THIS IS
 A 2D top-down "office" dashboard where 3 real AI agents (Finley/Financial,
 Mave/Marketing, Lex/Legal) work as a team on tasks the Boss (the user) gives
-them in a chat panel. Agents are real LLM calls to local Ollama (qwen3),
+them in a chat panel. Agents are real LLM calls to local Ollama (qwen3.6),
 not scripted. Their avatars walk around a pixel-art office based on live
 status pulled from a Python backend. Originally requested as: research +
 launch a new product as a team.
@@ -114,7 +114,7 @@ launch a new product as a team.
 HOW TO RUN (two terminals)
   npm run backend   -> python3 backend/server.py   (port 8000, stdlib only, no pip installs)
   npm run dev       -> vite dev server               (port 5173, http://localhost:5173)
-Requires `ollama serve` running with `qwen3` pulled (qwen3:latest).
+Requires `ollama serve` running with `qwen3.6`.
 Vite proxies /api -> localhost:8000 (see vite.config.js).
 
 STACK
@@ -169,15 +169,15 @@ ADDRESSING THE USER
   chat messages (frontend cosmetic only) — intentionally NOT renamed, low
   value / high busywork.
 
-TOOL USE (Ollama native tool-calling, qwen3 supports it)
+TOOL USE (Ollama native tool-calling, qwen3.6 supports it)
   backend/server.py: run_agent_turn() loop, up to 6 tool-call iterations
   per turn before forcing a prose answer. Ollama call includes think:false
-  (skip qwen3 reasoning phase, much faster ~1-3s replies) and a `tools` list
+  (skip qwen3.6 reasoning phase, much faster ~1-3s replies) and a `tools` list
   built from agent_tools(agent) (all discovered tools unless AGENT["tools"]
   restricts it). Every tool call is pushed into the chat log as
   from:"tool", agent:<id> and rendered as a small "🔧 name(args)" line in
   ChatPanel.jsx so the Boss can watch what they're doing.
-  Known quirk: qwen3 (small model) sometimes gets the ARITHMETIC WRONG even
+  Known quirk: qwen3.6 (small model) sometimes gets the ARITHMETIC WRONG even
   when the calculator tool returns the right number (e.g. reported a monthly
   figure as annual once) — tool plumbing is solid, model reasoning on top of
   correct tool output is not guaranteed. Bigger model = better judgement,

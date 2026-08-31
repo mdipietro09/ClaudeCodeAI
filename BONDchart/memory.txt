@@ -1,282 +1,155 @@
 ================================================================================
-BONDchart — SESSION LOG / PROJECT MEMORY
-Last updated: 2026-08-16
-Read this first to be fully caught up.
+BONDchart — PROJECT MEMORY (current state)
+Last rewritten: 2026-08-31 — this is a fresh, current-state-only version.
+Read this first to be caught up.
 ================================================================================
-
-BIG CHANGE [2026-08-16]: THE PROJECT NOW RUNS ON OLLAMA (LOCAL, FREE)
----------------------------------------------------------------------
-The "ask Claude" step of the routine (write macro rows, refresh latest week's
-text, post-mortem notes on misses, re-anchor forecast) is now AUTOMATED via a
-local Ollama model. New file ai_maintenance.py; run.py calls
-run_ai_maintenance(llm) as step 0 before building the chart, so
-`python3 run.py` = the whole cycle (maintenance + rebuild).
-- MODEL SWITCH: the ONLY line to change is `llm = 'qwen2.5'` at the top of
-  run.py. Ollama HTTP API at localhost:11434 via stdlib urllib (no pip deps —
-  pip is broken in this env, remember).
-- If Ollama isn't running, the AI step is SKIPPED with a warning and the chart
-  still builds from the existing xlsx files.
-- ai_maintenance.py logic mirrors update.py (same REANCHOR_TOLERANCE=0.30,
-  same HIT/MISS scoring): fills missing macro weeks, refreshes the latest
-  data week's event row every run, writes post-mortem notes on noteless
-  MISSes (PROVISIONAL prefix if week incomplete), and on REVIEW appends a new
-  4-week vintage + marks old upcoming rows superseded (never deletes).
-  Forecast candles are validated/clamped (sane_candle: H/L consistent, opens
-  chained onto last close, anchor±6 bound). SAME-DAY RE-ANCHOR GOTCHA: if new
-  made_on <= live made_on, +1 hour is added so vintages never merge.
-- update.py is still the read-only checker; its docstring now points at run.py.
-- [2026-08-16b] run.py IS THE MASTER: it ends with `import forecast_plot`, so
-  one command rebuilds PLOT.html AND FORECAST.html — never tell the user to
-  run multiple files. It also takes optional free-text instructions:
-  `python3 run.py "the forecast is really bad so do it again"` — the string
-  is injected into every prompt AND always forces a fresh forecast vintage
-  (supersede note records the instruction). With a 7B model the instruction
-  must be repeated right next to the forecast rules or it gets ignored
-  (already done in ai_maintenance.py — keep it there).
-- Prompt hygiene learned testing qwen2.5 (7B): it copies literal placeholders
-  ("site.com", "ICON") — prompts use real examples + a source guard; icon
-  falls back to ↔️ if missing. Text quality/factuality is below Claude's
-  (qwen2.5 doesn't know real 2026 events — it writes plausible narrative from
-  the price action + context in the prompt); user accepted this trade-off for
-  fully-local/free.
 
 WHAT THIS PROJECT IS
 --------------------
-Weekly candlestick chart of the Italian BTP bond IT000553414, built with
-pandas + plotly, exported to PLOT.html. The user downloads fresh price data
-into data.csv (daily OHLC, Investing.com-style format: MM/DD/YYYY, quoted
-numbers, utf-8-sig BOM, newest row first) and rebuilds the chart.
+Weekly candlestick chart of the Italian BTP bond IT000553414 (4.5% Oct-2053,
+price typically 90-106 points), built with pandas + plotly. The user
+downloads fresh daily OHLC price data into data.csv (Investing.com-style
+format: MM/DD/YYYY, quoted numbers, utf-8-sig BOM, newest row first),
+manually writes a macro/geopolitical briefing into macro.xlsx, then runs
+ONE command to rebuild everything:
 
-Storyline in the data (2026 YTD): Jan-Feb rally to ~106 on rate-cut bets ->
-US-Israel war on Iran erupts Feb 27-28, Hormuz shut, oil spikes -> BTP crashes
-to YTD low 96.60 (late Mar) -> ceasefire relief rallies and truce-break
-selloffs alternate -> ECB first hike since 2023 (Jun 11, to 2.25%) -> renewed
-strikes in July -> ECB holds 2.25% on Jul 23 -> last close 97.66 (Fri Jul 24).
+    python3 run.py
+        AI maintenance (Ollama) -> PLOT.html -> FORECAST.html
 
-FILES
------
-- run.py            main build script: data.csv -> PLOT.html
-- forecast_plot.py  forecast review chart: forecast.xlsx vs actuals -> FORECAST.html
-                    (all vintages: Low-High band + Close line per vintage, dark
-                    blue = old / bright blue #66b8f2 = live, actual candles
-                    green/red; ✅/❌ verdict markers whose hover shows the
-                    post-mortem note; colors validated for CVD+contrast on the
-                    dark surface — VINTAGE_LADDER, don't go darker than #3465ad)
-                    [2026-08-01] now has the same W⇄D pill toggle as PLOT.html
-                    (snippet duplicated in forecast_plot.py): daily actuals are
-                    trace 1 (visible=False), toggle restyles traces [0,1] ONLY —
-                    vintage bands/lines/verdicts stay weekly in both views.
-                    Weekend rangebreaks added; divider moved to last_week_end+1d
-                    (Saturday); title x=0.06 to clear the fixed toggle.
-- update.py         maintenance checker (run after each data.csv refresh)
-- sr_levels.py      shared S/R clustering/merging (TOLERANCE, MIN_WEEK_SPAN,
-                    MERGE_DIST live here now) — imported by run.py AND
-                    forecast_plot.py so both charts show identical levels;
-                    forecast chart also draws the white 100 line
-- data.csv          daily price data (user downloads this; ends 07/31/2026)
-- macro_events.xlsx narrative for PAST weeks (was hard-coded in run.py)
-- forecast.xlsx     4-week FORECAST candles + narrative (was hard-coded too)
-- PLOT.html         output chart
-- _api.py           untouched, never examined
-- memory.txt        this file
+    python3 run.py "some free-text instruction"
+        Same, but the instruction is injected into every AI prompt and
+        always forces a fresh forecast vintage (see FORECAST.XLSX below).
 
-WHAT I DID (SESSION OF 2026-07-23/24)
--------------------------------------
-1) EXTERNALIZED THE HARD-CODED DATA
-   - Moved the 30 macro-event dicts out of run.py into macro_events.xlsx
-     (columns: date, icon, text, source).
-   - Moved the 4 forecast dicts into forecast.xlsx. User first said JSON,
-     then corrected to Excel — everything is Excel.
-   - run.py now does pd.read_excel() for both (see MACRO_EVENTS_PATH and
-     FORECAST_PATH constants in run.py).
+FILES (everything is just these 5 + outputs)
+----------------------------------------------
+- run.py            THE WHOLE PIPELINE. One file, no other .py modules in
+                     the pipeline. Contains: S/R level clustering, the
+                     Ollama-driven forecast maintenance (post-mortems +
+                     re-anchoring), the main chart build, and the
+                     forecast-review chart build. Sections are numbered
+                     0-6 with banner comments — read top to bottom.
+- data.csv           daily price data, user downloads/refreshes this.
+- macro.xlsx         macro/geopolitical narrative — MAINTAINED BY HAND by
+                     the user, every run. Columns: date, icon, text,
+                     summary (see SCHEMAS below). The AI never writes
+                     date/icon/text — only the `summary` column.
+- forecast.xlsx      append-only log of every 4-week forecast vintage the
+                     AI has ever made, plus HIT/MISS scoring notes. AI
+                     writes this; user can hand-edit if wanted (e.g. to
+                     fix icons).
+- PLOT.html          OUTPUT — main chart.
+- FORECAST.html      OUTPUT — forecast-vs-actual review chart.
+- _api.py            untouched, unrelated, unused investiny data-fetch
+                     snippet. Not part of the pipeline.
 
-2) BUILT THE UPDATE WORKFLOW (update.py)
-   Run `python3 update.py` after downloading new data.csv. It prints:
-     1. NEW DATA — latest daily rows + current weekly candle
-     2. MACRO EVENTS — weeks in data missing a row in macro_events.xlsx,
-        + reminder to re-check the latest event text vs what actually happened
-     3. FORECAST — per forecast week: completed weeks scored HIT/MISS
-        (actual close within forecast Low-High ±0.05 AND same candle
-        direction); plus anchor-drift check: if the latest weekly close moved
-        more than REANCHOR_TOLERANCE = 0.30 pts from anchor_close, verdict
-        is REVIEW / RE-ANCHOR, else KEEP.
-   update.py is read-only by design: it diagnoses, humans/Claude edit the
-   xlsx files, then `python3 run.py` rebuilds.
+Deleted from the project (no longer exist, don't recreate unless asked):
+sr_levels.py, ai_maintenance.py, forecast_plot.py, macro_events.xlsx,
+update.py — all consolidated into run.py or superseded by macro.xlsx.
 
-3) RESTRUCTURED forecast.xlsx SCHEMA  [v2, session 2026-07-27]
-   forecast.xlsx is an APPEND-ONLY LOG of every forecast vintage.
-   Columns: week_end (absolute Friday date), Open, High, Low, Close, icon,
-   text, made_on, anchor_close, note.
-   - A "vintage" = all rows sharing one made_on/anchor_close.
-   - NEVER delete rows. On re-anchor: append the new vintage's rows; on the
-     old vintage, mark replaced upcoming rows note="superseded by <date>
-     re-anchor (...)", and write a POST-MORTEM note on every completed week
-     that MISSED (why it missed + lesson) — this is the learning loop.
-   - run.py plots only the LATEST vintage (max made_on), and within it only
-     rows with week_end > last actual weekly date.
-   - update.py: section 3 judges only the latest vintage (KEEP/RE-ANCHOR);
-     section 4 "FORECAST TRACK RECORD" scores every vintage HIT/MISS,
-     prints notes, flags misses lacking a note (that's a REVIEW problem),
-     and prints a running hit-rate score.
-   Track record so far: 1/1 (vintage 2026-07-24 week 07-31: mid-week MISS
-   flip-flopped to FINAL HIT at Friday close 97.18 — full saga + lessons in
-   its note).
+SCHEMAS
+-------
+macro.xlsx: date, icon, text, summary
+  - date:    any weekday the user actually wrote the entry on (not
+             required to be a Friday). run.py SNAPS it to that week's
+             Friday to match it against the weekly candle — so date any
+             day you want, it'll still land on the right week. Two rows
+             landing on the same Friday: the most recently WRITTEN one
+             (by `date`) wins, older one is dropped from the chart.
+  - icon:    user-chosen emoji, floats above that week's candle.
+  - text:    freeform long-form briefing (markdown-ish: **bold**, links,
+             newlines). Never truncated/rewritten by the AI.
+  - summary: AI-written IF EMPTY, one short sentence condensing the single
+             most important event from `text`, paired with the icon on
+             the chart hover (the raw `text` is too long for a hover/every
+             AI prompt). User can hand-edit any cell — AI only fills
+             EMPTY summary cells, never overwrites a non-empty one. Clear
+             a cell to force the AI to rewrite it next run.
 
-4) RAN ONE FULL UPDATE CYCLE (the "test")
-   - New data: Fri 2026-07-24 close 97.66 (+0.48%) — old forecast was
-     anchored to Thu close 97.19 -> drift +0.47 -> checker said REVIEW. ✔
-   - Updated the 2026-07-24 macro event from pre-ECB expectation to outcome
-     (ECB held 2.25%, hawkish-leaning Lagarde, BTP dip to 97.19 then Friday
-     bounce to 97.66).
-   - Re-anchored forecast: made_on=2026-07-24, anchor_close=97.66, four
-     candles nudged up ~0.15, same scenario arc. Checker then said KEEP.
-   - SESSION 2026-07-27 UPDATE: data revision — Fri 07-24 actually closed
-     98.20 (+1.04%), not 97.66; Mon 07-27 rallied to 98.55. The 07-31
-     forecast week is already a MISS on record (row kept in forecast.xlsx
-     for history). Fixed 07-24 event text, added 07-31 event row (FOMC week,
-     text = expectations; REFRESH IT to outcomes next update).
-   - SESSION 2026-07-29 UPDATE ("run all" cycle, data thru Wed 07-29):
-     Hawkish Jul 29 FOMC hold (oil-inflation risk flagged, hike not ruled
-     out) -> BTP gave back the relief rally, Wed close 97.93 (-0.86%).
-     * 07-31 macro row refreshed to FOMC outcome (week still incomplete —
-       RE-CHECK it next update once Thu/Fri land).
-     * TWIST: the 07-24 vintage's 07-31 week, previously a recorded MISS
-       (mid-week 98.55 > 98.45 high), is now back IN range at 97.93 —
-       update.py scores it HIT (1/1). Its note rewritten: provisional HIT,
-       final verdict at Friday close. Lesson added: don't judge HIT/MISS
-       before the week completes. update.py judges the in-progress week
-       as if complete — beware.
-     * Drift -0.62 -> REVIEW -> re-anchored; 07-27 vintage rows marked
-       "superseded by 2026-07-29 re-anchor (drift -0.62, hawkish FOMC)".
-     * S/R shifted with new data: old S 98.36 + S 97.37 merged into
-       S 98.02 (6 levels now); forecast texts updated to cite 98.02.
-   - SESSION 2026-08-01 UPDATE ("run all" cycle, data thru Fri 07-31):
-     Post-FOMC selloff extended all week: Thu 97.65, Fri 97.18 — weekly
-     candle O=98.56 H=98.90 L=97.18 C=97.18 (-1.04% w/w), CLOSED BELOW
-     the 97.33 support. Ceasefire still unsigned.
-     * 07-31 macro row refreshed to full-week outcome (final now).
-     * 07-24 vintage's 07-31 week: FINAL HIT confirmed at Friday close
-       (97.18 inside 97.00-98.45, red candle both). Track record 1/1.
-       Note rewritten as FINAL with the mid-week MISS->HIT saga + lessons.
-     * S/R shifted again: the merged S 98.02 re-split into S 98.36 +
-       S 97.33 (7 levels now). Close sits just below 97.33 = support break.
-     * Drift -0.75 -> REVIEW -> re-anchored; 07-29 vintage rows marked
-       "superseded by 2026-07-31 re-anchor (drift -0.75, post-FOMC selloff
-       extended, 97.33 support broken)".
-   - SESSION 2026-08-05 UPDATE ("update all" cycle, data thru Wed 08-05):
-     THE BIG MISS: ceasefire SIGNED Aug 2 -> BTP ripped 98.20/98.90, Wed
-     intraday high 99.36, close 98.90 — blew through the 07-31 vintage's
-     08-07 fc High 98.10 AND the 98.36 resistance by Tuesday. User called
-     it ("you fucked up") — post-mortem written on the 08-07 row:
-     direction right (truce bounce), magnitude badly wrong; PROVISIONAL
-     MISS (week ends Friday — remember the flip-flop rule). LESSONS:
-     (1) after a capitulation week that breaks support, relief rallies
-     overshoot — don't cap the bounce at the nearest resistance;
-     (2) never make the bold call (ATL break) AT the local extreme =
-     recency bias; boldness belongs mid-trend.
-     * 08-07 macro row added (truce signed, week in progress — REFRESH
-       to outcomes next update, incl. Fri payrolls).
-     * S/R re-merged AGAIN: S 98.36 + S 97.33 -> single S 97.96
-       (6 levels; this 98.3x/97.3x pair keeps splitting/merging).
-     * Drift +1.72 -> re-anchor; 07-31 vintage upcoming rows marked
-       "superseded by 2026-08-05 re-anchor". Track record 1/2 (50%).
-     * GOTCHA FIXED: macro_events.xlsx `date` col was 31 strings + my
-       appended Timestamp -> update.py sort_values crashed (str vs
-       datetime). Now ALL dates normalized to datetime on write; when
-       appending xlsx rows, pd.to_datetime the whole column first.
-   - CURRENT FORECAST (made_on 2026-08-05, anchor_close 98.90):
-       2026-08-14 🇺🇸 O=98.90 H=99.60 L=98.20 C=99.05  truce holds, US CPI, 99.40 caps
-       2026-08-21 🇪🇺 O=99.05 H=99.45 L=98.20 C=98.55  Sept-hike pricing firms, fade
-       2026-08-28 🇺🇸 O=98.55 H=99.00 L=97.70 C=98.00  Jackson Hole, drift to 97.96
-       2026-09-04 🇪🇺 O=98.00 H=98.60 L=97.30 C=97.60  run-up to 10 Sept ECB, 97.96 holds
-     Scenario arc: truce-rally momentum stalls under 99.40 -> grind lower
-     into the September central-bank gauntlet; 97.96 tested but HOLDS
-     (deliberately no floor-break call — see lesson 2 above).
+forecast.xlsx: week_end, Open, High, Low, Close, icon, text, made_on,
+               anchor_close, note
+  - APPEND-ONLY. A "vintage" = all rows sharing one made_on/anchor_close.
+    NEVER delete rows — history is the point (track record + lessons).
+  - icon/text: AI-written per forecast week, following ICON_CONVENTION in
+    run.py (same convention used for macro.xlsx icons, defined once,
+    reused everywhere to avoid disagreeing icon lists).
+  - note: post-mortem on a MISSed completed week (why + lesson learned,
+    fed back into future prompts), OR "superseded by <date> re-anchor
+    (<reason>)" on an upcoming row a newer vintage replaced.
+  - PLOT.html plots only the LATEST vintage's still-future rows.
+  - FORECAST.html plots every vintage, but a row marked "superseded" is
+    EXCLUDED from that vintage's line/band (only kept in the .xlsx for
+    history) — so if two forecasts land on the same week, only the
+    latest one is drawn; older vintages' lines just stop at their last
+    still-live/completed week instead of overlapping.
 
-5) REWROTE THE ENTIRE NARRATIVE (user request: MORE FED)
-   User: "the ECB is important but not more than the FED" — the narrative
-   must feature the Fed heavily. New convention for macro_events.xlsx AND
-   forecast.xlsx:
-     ICON CONVENTION (icon column = DOMINANT event of the week):
-       🇪🇺 ECB          🇮🇹 Italy         🇺🇸 Fed & US inflation
-       ⚠️ US politics   other countries by flag (🇮🇷 🇷🇺 🇨🇳 ...)
-       ↔️ kept only for truly quiet no-catalyst weeks
-     MULTI-EVENT WEEKS: hover text = one line per sub-event, each formatted
-       "ICON <b>Label:</b> text", joined with <br>. source column lists all
-       sources joined with " · ".
-   Fed thread woven through all 30 weeks, consistent with price action:
-     Jan dovish cut bets / Jan 27-28 FOMC hold "no rush" -> cool Feb CPI ->
-     war flips market from cuts to HIKES (hot Mar CPI, hawkish Mar 17-18
-     FOMC) -> Apr 28-29 hold ("containable if ceasefire holds") -> hawkish
-     Jun 16-17 dot plot (no cuts in 2026) -> strong Jul payrolls + hot CPI
-     drag BTP down with Treasuries.
-   Dominant-icon tally: 🇺🇸 x9, 🇮🇷 x9, 🇪🇺 x5, 🇮🇹 x3, ⚠️ x1, ↔️ x2.
+RUN.PY PIPELINE (in order)
+---------------------------
+0) AI MAINTENANCE (Ollama, local model — change `llm` var at the top of
+   run.py to switch models; currently 'gemma4'). Talks to
+   localhost:11434 via stdlib urllib only, no pip deps. If Ollama isn't
+   running, this step is SKIPPED with a warning and the chart still
+   builds from the existing xlsx files.
+     a) maintain_macro_summary — fills any EMPTY macro.xlsx `summary` cell.
+     b) market_context() — builds the shared prompt context: recent
+        weekly candles, S/R levels, ATH/ATL, AND the latest macro.xlsx
+        summary as "ground truth for current events" (the AI has ZERO
+        other awareness of the real world — it only knows what's in this
+        context, never assume it knows current events on its own).
+     c) maintain_forecast — writes a post-mortem `note` on any completed
+        MISS lacking one; re-anchors (new 4-week vintage) if price
+        drifted > REANCHOR_TOLERANCE (0.30 pts) from the live vintage's
+        anchor, a completed week of the live vintage MISSed, or the user
+        passed free-text instructions (always forces re-anchor).
+1) build_main_chart — weekly candles + daily-view toggle (W/D pill,
+   top-left), filtered S/R levels, ATH/ATL lines, macro.xlsx markers,
+   4-week forecast candles (blue) + a deterministic daily expansion of
+   them, FORECAST divider, white 100.00 line. -> PLOT.html
+2) build_forecast_review_chart — every non-superseded forecast vintage
+   as a Low-High band + Close line (color ladder: darker = older, bright
+   blue #66b8f2 = live), ✅/❌ verdict markers with post-mortem notes on
+   hover, same S/R/100-line overlay, same W/D toggle (flips actual
+   candles only). -> FORECAST.html
 
-6) CHART COSMETICS (user requests)
-   - Removed y-axis title "Price" (user: "like bro, i know it's the price").
-   - Removed the legend entirely (showlegend=False).
-   - [2026-08-05] S/R labels rounded to 1 decimal (S 98.0) in BOTH charts;
-     ATH/ATL/100 labels stay at 2 decimals (user only asked for S/R).
-   => Keep new chart elements legend-free and label-light; user wants a
-      clean chart and knows what everything is.
+KEY CONVENTIONS / GOTCHAS
+--------------------------
+- ICON_CONVENTION (run.py): defined ONCE, reused in SYSTEM_PROMPT and the
+  re-anchor prompt, so the model never sees two disagreeing icon lists.
+  clean_icon() strips to just the first token (the model sometimes
+  returns "🇪🇺 ECB" instead of "🇪🇺" — would render as literal text on
+  the chart otherwise).
+- SYSTEM_PROMPT deliberately has NO hardcoded storyline or dates (a past
+  "next ECB meeting is 10 Sept" baked in forever was a real bug that got
+  fixed) — all current-events grounding comes from market_context()'s
+  live macro.xlsx summary, refreshed every run. If forecasts start
+  ignoring reality, check that macro.xlsx actually has a recent row.
+- W/D toggle JS: TOGGLE_SNIPPET is filled via inject_toggle(), which MUST
+  json.dumps() the boolean mask lists — Python's str() on a bool list
+  produces invalid JS ([True, False] instead of [true, false]) and
+  silently breaks the click handler. This broke once; don't regress it.
+- Weekly is the driver: S/R, ATH/ATL, macro markers and forecast are all
+  computed on the WEEKLY resample; daily is visualization-only (each
+  weekly forecast candle is deterministically expanded to 5 daily
+  candles reproducing the same OHLC exactly).
+- Trace order matters for the W/D toggle's visible-mask indices in both
+  build_main_chart (traces 0/1 history, 2 macro icons, 3/4 forecast, 5
+  forecast icons — 2 and 5 stay visible in both views) and
+  build_forecast_review_chart (0/1 actual candles only) — if you add a
+  trace, update the mask indices passed to inject_toggle().
+- sane_candle() clamps any AI-written forecast candle to anchor ± 6.0 pts
+  and correct H/L/O/C ordering before it's ever written to forecast.xlsx.
+- Same-day re-anchor: if a new vintage's made_on <= the live vintage's
+  made_on, +1 hour is added so the two vintages don't merge into one.
 
-RUN.PY INTERNALS WORTH REMEMBERING
-----------------------------------
-- WEEKLY/DAILY TOGGLE [added 2026-08-01, user loves the plot]: a SMALL
-  custom pill switch (W ⇄ D) fixed top-left, injected as HTML/CSS/JS into
-  PLOT.html after write_html (TOGGLE_SNIPPET in run.py; div_id="chart",
-  JS calls Plotly.restyle on traces 0/1/3/4). User rejected plotly's
-  native updatemenus buttons as too bulky — keep the toggle tiny.
-  WEEKLY IS THE DRIVER: S/R, ATH/ATL, macro markers and forecast are all
-  computed weekly; daily is visualization only.
-  * Trace order matters for the buttons' visible masks: 0 weekly hist,
-    1 daily hist, 2 macro markers, 3 weekly fc, 4 daily fc, 5 fc icons
-    (2 and 5 stay visible in both views — weekly-anchored icons float
-    above the week's High in both). If you add a trace, UPDATE THE MASKS.
-  * weekly_to_daily() expands each weekly forecast candle into a
-    deterministic 5-bday path reproducing weekly OHLC exactly (first
-    open=O, last close=C, H/L touched once; bull = dip early rally late,
-    bear = mirror). Verified: resample of fcd == forecast rows.
-  * xaxis rangebreaks hide weekends; divider moved to last_date+1d
-    (Saturday = break edge) so it sits between candles in both views.
-- Weekly resample W-FRI: Open=first, High=max, Low=min, Close=last "Price".
-- S/R levels: cluster weekly Highs/Lows within TOLERANCE=0.40, keep clusters
-  spanning > MIN_WEEK_SPAN=3 weeks, then merge R+S pools within
-  MERGE_DIST=0.5 (touch-weighted price; mixed groups labeled "R/S").
-  Current levels: R 104.47, R 103.71, R 102.23, R/S 101.05, S 99.40,
-  S 98.36, S 97.33. ATH 106.11 (green line), ATL 96.60 (red line),
-  white line at 100.
-- Macro markers: text-mode scatter, icon floats High+0.9 above each weekly
-  candle; hover shows date + text + source. Events whose date is not a
-  W-FRI weekly index date are silently skipped — dates MUST be Fridays.
-- Forecast candles are blue; dashed blue divider + "FORECAST →" label at
-  last_date + 3 days; S/R + ATH/ATL/100 lines extend across forecast window.
-- y-axis dtick=1 (gridline every whole point), rangeslider on, dark theme.
-
-ENVIRONMENT GOTCHAS
--------------------
-- Python is anaconda3 Python 3.8; pandas is old; noisy numexpr/xlsxwriter
-  warnings on every run — harmless, filter with 2>/dev/null.
-- openpyxl was broken (numpy.float removal); I upgraded it to 3.1.5.
-  pip upgrades mostly FAIL with "InvalidVersion: '4.0.0-unsupported'"
-  (a broken installed package's metadata kills the resolver);
-  `pip install --no-deps --ignore-installed <pkg>` worked around it.
-- Flag emoji in xlsx may display as letter pairs (IT, US) in Excel on some
-  systems — font issue only; browsers render them fine in the chart.
-
-THE ROUTINE (what to do next session)
--------------------------------------
-USER SHORTHAND: "run all" (or similar) = execute this whole routine
-end-to-end without asking: update.py -> fix xlsx files (macro rows, forecast
-post-mortem notes + re-anchor if REVIEW) -> run.py -> forecast_plot.py ->
-send PLOT.html + FORECAST.html with a summary -> update memory.txt.
-1. User downloads fresh data.csv.
-2. python3 update.py            -> read the report
-3. Add macro_events.xlsx rows for any missing weeks (Friday dates!) using
-   the icon convention above; refresh the latest week's text to outcomes.
-4. If verdict = REVIEW: rewrite forecast.xlsx (new week_end dates rolling
-   forward, updated OHLC + narrative, bump made_on and anchor_close).
-   Weeks that have completed just stay — run.py won't plot past weeks.
-5. python3 run.py               -> rebuilds PLOT.html
-6. python3 forecast_plot.py     -> rebuilds FORECAST.html (forecast review)
+THE ROUTINE (what to do each session)
+---------------------------------------
+1. User downloads fresh data.csv and hand-writes a new macro.xlsx row
+   (any weekday, icon of their choice, long-form text — summary is
+   optional, AI fills it if left empty).
+2. `python3 run.py` — does everything: AI maintenance, PLOT.html,
+   FORECAST.html. That's the only command needed.
+3. If the user wants to force a fresh forecast regardless of drift, or
+   steer it (e.g. "make the icons less repetitive"), pass free text:
+   `python3 run.py "instruction here"`.
+4. Never delete forecast.xlsx rows or macro.xlsx rows — this is a
+   track-record/history project by design.
 ================================================================================

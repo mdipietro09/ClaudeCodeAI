@@ -4,7 +4,7 @@ import subprocess
 import sys
 import ollama
 
-llm = "qwen2.5"
+llm = "qwen3.6"
 
 # 1. Define the actual tool function
 def execute_shell_command(command: str) -> str:

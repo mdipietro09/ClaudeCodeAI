@@ -17,7 +17,7 @@ AGENT = {
     "emoji": "🛠️",                   # avatar
     "color": "#fb923c",              # accent color (hex)
     "order": 4,                      # position in a full team round (lower = earlier)
-    # "model": "qwen3:latest",       # optional: per-agent Ollama model
+    # "model": "qwen3.6",            # optional: per-agent Ollama model
     # "tools": [],                   # optional: [] = no tools (e.g. a pure-synthesis role
                                       #   like manager.py); omit to give it every discovered tool
     "system": "You are Ada, the engineering agent."
