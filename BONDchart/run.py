@@ -309,12 +309,26 @@ def ollama_json(model, user_prompt, temperature=0.4, retries=2):
     raise RuntimeError(f"Model kept returning invalid JSON:\n{raw[:400]}")
 
 
+def week_friday(dates):
+    """Snap a date (or a Series of dates) to the Friday of its Mon-Sun week
+    — the same rule build_main_chart uses to match macro.xlsx rows to
+    weekly candles, kept in one place so grouping logic never disagrees."""
+    return dates + pd.to_timedelta((4 - dates.dt.weekday) % 7, unit="D")
+
+
 def maintain_macro_summary(model):
     """Condense any macro.xlsx row missing a `summary` into a one-sentence
-    caption of its single most important event, paired with the user's
-    icon. The full briefing (macro.xlsx's `text`) can run long — this is
-    what the chart marker's hover shows and what gets pasted into every
-    forecast/post-mortem prompt, instead of the whole raw blob."""
+    caption, paired with the user's icon. The full briefing (macro.xlsx's
+    `text`) can run long — this is what the chart marker's hover shows and
+    what gets pasted into every forecast/post-mortem prompt, instead of
+    the whole raw blob.
+
+    A week isn't a single standalone day: the user may update macro.xlsx
+    every day (Mon-Fri) or just once. Each row is snapped to its Mon-Sun
+    week's Friday (see week_friday/build_main_chart), and the summary for
+    a given row is condensed from EVERY row in that same week up to and
+    including it (in chronological order) — so a Wednesday update reads
+    Monday+Tuesday+Wednesday as one running story, not an isolated day."""
     try:
         events = pd.read_excel(MACRO_PATH)
     except FileNotFoundError:
@@ -325,39 +339,69 @@ def maintain_macro_summary(model):
     if "summary" not in events.columns:
         events["summary"] = ""
     events["summary"] = events["summary"].fillna("")
+    events["friday"] = week_friday(events["date"])
     changed = False
 
     for idx, row in events.iterrows():
         if str(row["summary"]).strip():
             continue
-        prompt = (
-            f"The user's hand-written macro briefing for the week of "
-            f"{pd.Timestamp(row['date']).date()} (they chose icon "
-            f"{row['icon']} as the dominant driver):\n\n{row['text']}\n\n"
-            "Condense ONLY the single most important event/development "
-            "from this text into one short, concrete sentence (max ~20 "
-            "words, numbers/names over adjectives) — a caption to pair "
-            "with the icon above that week's candle. Do not add anything "
-            "not present in the text.\n"
-            'Reply with JSON: {"summary": "..."}')
+        week_rows = events[(events["friday"] == row["friday"]) &
+                            (events["date"] <= row["date"])].sort_values("date")
+        if len(week_rows) > 1:
+            day_log = "\n\n".join(
+                f"[{pd.Timestamp(r['date']).strftime('%a %d %b')}] {r['text']}"
+                for _, r in week_rows.iterrows())
+            prompt = (
+                f"The user's hand-written macro briefing entries so far this "
+                f"week (week ending Friday {pd.Timestamp(row['friday']).date()}), "
+                f"one entry per day they updated, in chronological order — "
+                f"treat this as a running story across the week, NOT "
+                f"independent standalone days (they chose icon {row['icon']} "
+                f"as this week's dominant driver):\n\n{day_log}\n\n"
+                "Condense the single most important event/development from "
+                "the WHOLE WEEK so far into one short, concrete sentence "
+                "(max ~20 words, numbers/names over adjectives) — a caption "
+                "to pair with the icon above that week's candle. If a later "
+                "day's entry updates or supersedes an earlier one, reflect "
+                "the latest state, not a stale earlier detail. Do not add "
+                "anything not present in the text.\n"
+                'Reply with JSON: {"summary": "..."}')
+        else:
+            prompt = (
+                f"The user's hand-written macro briefing for the week of "
+                f"{pd.Timestamp(row['date']).date()} (they chose icon "
+                f"{row['icon']} as the dominant driver):\n\n{row['text']}\n\n"
+                "Condense ONLY the single most important event/development "
+                "from this text into one short, concrete sentence (max ~20 "
+                "words, numbers/names over adjectives) — a caption to pair "
+                "with the icon above that week's candle. Do not add anything "
+                "not present in the text.\n"
+                'Reply with JSON: {"summary": "..."}')
         summary = str(ollama_json(model, prompt, temperature=0.2)
                       .get("summary", "")).strip()
         events.loc[idx, "summary"] = summary
+        week_tag = f" (week so far, {len(week_rows)}d)" if len(week_rows) > 1 else ""
         print(f"  [{model}] summarized macro event "
-              f"{pd.Timestamp(row['date']).date()}: {summary}")
+              f"{pd.Timestamp(row['date']).date()}{week_tag}: {summary}")
         changed = True
 
     if changed:
+        events = events.drop(columns=["friday"])
         events["date"] = pd.to_datetime(events["date"])
         events.to_excel(MACRO_PATH, index=False)
     return changed
 
 
 def latest_macro_briefing(max_chars=2500):
-    """The most recent hand-written macro.xlsx row — the model's only
-    grounding in real-world events now that macro narrative is user-owned.
-    Prefers the short AI `summary` (see maintain_macro_summary); falls
-    back to the raw `text`, truncated, if no summary exists yet."""
+    """The current week's hand-written macro.xlsx entries — the model's
+    only grounding in real-world events now that macro narrative is
+    user-owned. Prefers the short AI `summary` on the latest row (see
+    maintain_macro_summary, which already condenses the whole week up to
+    that row); if that summary is missing (e.g. Ollama was unreachable
+    when it was written), falls back to stitching together the raw
+    `text` of every row in the current Mon-Sun week in order — so the
+    model still sees Monday through today as one story, not just
+    whichever day was updated last."""
     try:
         events = pd.read_excel(MACRO_PATH)
     except FileNotFoundError:
@@ -365,10 +409,20 @@ def latest_macro_briefing(max_chars=2500):
     if events.empty:
         return ""
     events["date"] = pd.to_datetime(events["date"])
-    latest = events.sort_values("date").iloc[-1]
+    events = events.sort_values("date")
+    events["friday"] = week_friday(events["date"])
+    latest = events.iloc[-1]
+    week_rows = events[events["friday"] == latest["friday"]]
     summary = str(latest.get("summary", "")).strip()
     if summary and summary.lower() != "nan":
         body = summary
+    elif len(week_rows) > 1:
+        body = "\n".join(
+            f"[{pd.Timestamp(r['date']).strftime('%a %d %b')}] "
+            f"{str(r['text']).strip()}"
+            for _, r in week_rows.iterrows())
+        if len(body) > max_chars:
+            body = body[:max_chars] + " …(truncated)"
     else:
         body = str(latest["text"]).strip()
         if len(body) > max_chars:
@@ -706,27 +760,7 @@ def build_main_chart(df, weekly):
     # (see maintain_macro_summary) instead — one sentence, paired with the
     # user's icon. Falls back to the raw text (truncated) if no summary
     # exists yet (e.g. Ollama was unreachable).
-    macro_df = pd.read_excel(MACRO_PATH)
-    macro_df["date"] = pd.to_datetime(macro_df["date"])
-    # snap each row to the Friday of its own Mon-Sun week, so a row dated
-    # any weekday still lands on that week's candle; if two rows land on
-    # the same Friday, the most recently written one wins
-    macro_df["friday"] = macro_df["date"] + pd.to_timedelta(
-        (4 - macro_df["date"].dt.weekday) % 7, unit="D")
-    macro_df = macro_df.sort_values("date").drop_duplicates("friday", keep="last")
-    macro_events = macro_df.to_dict("records")
-
-    event_df = weekly.set_index("WeekEnd")
-    marker_x, marker_y, marker_text, marker_icon = [], [], [], []
-
-    for ev in macro_events:
-        d = pd.Timestamp(ev["friday"])
-        if d not in event_df.index:
-            continue
-        row = event_df.loc[d]
-        marker_x.append(d)
-        marker_y.append(row["High"] + 0.9)  # float marker just above the candle
-        marker_icon.append(ev["icon"])
+    def macro_body(ev):
         summary = str(ev.get("summary", "")).strip()
         if summary and summary.lower() != "nan":
             body = summary
@@ -735,8 +769,41 @@ def build_main_chart(df, weekly):
             body = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", body)
             if len(body) > 400:
                 body = body[:400] + " …"
-        marker_text.append(
-            f"<b>{pd.Timestamp(ev['date']).strftime('%d %b %Y')}</b><br>{body}")
+        return body
+
+    macro_df = pd.read_excel(MACRO_PATH)
+    macro_df["date"] = pd.to_datetime(macro_df["date"])
+    # snap each row to the Friday of its own Mon-Sun week, so a row dated
+    # any weekday still lands on that week's candle
+    macro_df["friday"] = week_friday(macro_df["date"])
+    macro_df = macro_df.sort_values("date")
+
+    event_df = weekly.set_index("WeekEnd")
+    marker_x, marker_y, marker_text, marker_icon = [], [], [], []
+
+    for friday, week_rows in macro_df.groupby("friday"):
+        d = pd.Timestamp(friday)
+        if d not in event_df.index:
+            continue
+        row = event_df.loc[d]
+        marker_x.append(d)
+        marker_y.append(row["High"] + 0.9)  # float marker just above the candle
+        marker_icon.append(week_rows.iloc[-1]["icon"])  # latest day's icon represents the week
+        if len(week_rows) > 1:
+            # multiple updates this week: show every day as its own bullet
+            # instead of only the latest one, so the hover reads as the
+            # whole week's story, not just its last entry
+            bullets = "<br>".join(
+                f"&#8226; <b>{pd.Timestamp(ev['date']).strftime('%d %b')}</b> "
+                f"{ev['icon']} {macro_body(ev)}"
+                for _, ev in week_rows.iterrows())
+            marker_text.append(
+                f"<b>Week of {d.strftime('%d %b %Y')}</b><br>{bullets}")
+        else:
+            ev = week_rows.iloc[0]
+            marker_text.append(
+                f"<b>{pd.Timestamp(ev['date']).strftime('%d %b %Y')}</b><br>"
+                f"{macro_body(ev)}")
 
     fig.add_trace(go.Scatter(
         x=marker_x, y=marker_y,
