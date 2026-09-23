@@ -85,6 +85,16 @@ Each view's script has the same structure:
 
 ------------------------------------------------------------------------
 ## 5. Interactions (both views)
+- Zoom & pan (added 2026-09-23): d3.zoom on each view's svg, scale 1–8×,
+  wheel/pinch + drag, +/−/⟲ buttons (.zoom-controls, top-left of the map).
+  Double-click zoom is disabled (double-click = select/deselect). All map
+  content is drawn inside one <g class="zoom-layer"> — anything new must be
+  appended to zoomLayer, not svg, or it won't move with the map.
+  Constant on-screen size while zoomed: CSS var --k (set on the svg) divides
+  .country/.route stroke widths and .route.dashed dasharray (arrowheads follow
+  stroke width); the zoom handler rescales glows (r/k), chokepoint diamonds,
+  [data-r]/[data-sw] hub markers, label font-size and dx/dy offsets, and
+  (crude) the hatch patterns' patternTransform.
 - Hover country → tooltip: name, group name (or "Importer (not part of a
   colored group)"), note, then "Export (100%)" list and "Import (100%)"
   list. Hover route → label + detail. Hover chokepoint/hub → its info.

@@ -45,11 +45,28 @@
   .country { transition: filter .15s ease, opacity .15s ease; cursor:pointer; }
   .country.faded { opacity:0.25; }
   .country.hovered { filter: brightness(1.18); }
-  .country.selected { stroke:#ffffff; stroke-width:1.6px; }
+  .country.selected { stroke:#ffffff; }
 
-  .route { transition: opacity .15s ease, stroke-width .15s ease; cursor:pointer; }
+  /* Zoom: --k is the current zoom level, set on each map's <svg>. Dividing
+     line widths / dashes by it keeps them the same size on screen while
+     the map itself magnifies (arrowheads follow the stroke width). */
+  .country { stroke-width: calc(1px / var(--k, 1)); }
+  .country.selected { stroke-width: calc(1.6px / var(--k, 1)); }
+  .route { stroke-width: calc(1.7px / var(--k, 1)); }
+  .route.dashed { stroke-dasharray: calc(4px / var(--k, 1)) calc(3px / var(--k, 1)); }
+
+  .route { transition: opacity .15s ease; cursor:pointer; }
   .route.faded { opacity:0.08 !important; }
-  .route.hovered { stroke-width:3.4 !important; }
+  .route.hovered { stroke-width: calc(3.4px / var(--k, 1)) !important; }
+
+  .map svg { cursor: grab; }
+  .map svg:active { cursor: grabbing; }
+  .zoom-controls { position:absolute; top:8px; left:8px; display:flex; flex-direction:column; gap:4px; }
+  .zoom-controls button {
+    width:28px; height:28px; padding:0; font:inherit; font-size:16px; line-height:1; color:var(--fg);
+    background:var(--panel); border:1px solid var(--panel-border); border-radius:6px; cursor:pointer;
+  }
+  .zoom-controls button:hover { background:#252523; }
 
   .glow { pointer-events:none; }
   .chokepoint { cursor:pointer; }
@@ -438,6 +455,8 @@ svg.append('defs').html(
 );
 
 function pt(c){ return projection(c); }
+// Chokepoint diamond of half-size s (in map units) centred on [lon,lat] c.
+function diamond(c, s){ const p=pt(c); return `M${p[0]},${p[1]-s}L${p[0]+s},${p[1]}L${p[0]},${p[1]+s}L${p[0]-s},${p[1]}Z`; }
 function routeColor(d){ return d.group ? groupByKey[d.group].color : '#a3a29c'; }
 function curvePath(points, bend){
   const p = points.map(pt);
@@ -565,7 +584,7 @@ function applyFocus(){
 const legend = d3.select('#crudeLegend');
 const legendHeader = legend.append('div').attr('class','legend-header');
 legendHeader.append('span').attr('class','legend-title').text('OIL TYPE:');
-legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
 legend.selectAll('.legend-item').data(groups).join('div')
   .attr('class','legend-item')
   .attr('data-key', d=>d.key)
@@ -596,8 +615,10 @@ lineKey.selectAll('.line-key-row').data([
 
 d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
   const countries = topojson.feature(world, world.objects.countries).features;
+  // Everything drawn on the map lives in this layer, so zoom/pan moves it as one.
+  const zoomLayer = svg.append('g').attr('class','zoom-layer');
 
-  svg.append('g').selectAll('path').data(countries).join('path')
+  zoomLayer.append('g').selectAll('path').data(countries).join('path')
     .attr('class','country')
     .attr('d',path)
     .attr('fill', d=>{
@@ -643,13 +664,14 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
-  svg.append('g').selectAll('circle').data(destGlow).join('circle')
+  zoomLayer.append('g').selectAll('circle').data(destGlow).join('circle')
     .attr('class','glow')
     .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1])
     .attr('r',20).attr('fill',d=>groupByKey[d.group].color).attr('opacity',0.22).attr('stroke','none');
 
-  svg.append('g').selectAll('path').data(routes).join('path')
+  zoomLayer.append('g').selectAll('path').data(routes).join('path')
     .attr('class','route')
+    .classed('dashed', d => d.dash)
     .attr('d',d=>curvePath(d.pts,d.bend)).attr('fill','none')
     .attr('stroke',routeColor).attr('stroke-width',1.7)
     .attr('stroke-dasharray',d=>d.dash?'4 3':null).attr('opacity',0.95)
@@ -663,20 +685,20 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
-  svg.append('g').selectAll('path').data(chokepoints).join('path')
+  zoomLayer.append('g').selectAll('path').data(chokepoints).join('path')
     .attr('class','chokepoint')
-    .attr('d',d=>{const p=pt(d.c); return `M${p[0]},${p[1]-5}L${p[0]+5},${p[1]}L${p[0]},${p[1]+5}L${p[0]-5},${p[1]}Z`;})
-    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5)
+    .attr('d',d=>diamond(d.c,5))
+    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5).attr('data-sw',0.5)
     .on('mouseenter', function(event, d){
       showTooltip(event, d.name, '#888780', d.detail);
     })
     .on('mousemove', moveTooltip)
     .on('mouseleave', hideTooltip);
 
-  svg.append('circle')
+  zoomLayer.append('circle')
     .attr('class','chokepoint')
-    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6)
-    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5)
+    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6).attr('data-r', 6)
+    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5).attr('data-sw',1.5)
     .on('mouseenter', showEuTooltip)
     .on('click', event => { event.stopPropagation(); selectCountry('EU'); })
     .on('mousemove', moveTooltip)
@@ -684,12 +706,38 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
 
   function label(d){
     const p = pt(d.c);
-    svg.append('text').attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
+    zoomLayer.append('text').datum({x:p[0], y:p[1], dx:d.dx ?? 8, dy:d.dy})
+      .attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
       .attr('font-size',11).attr('fill',labelFill).text(d.name);
   }
   originLabels.forEach(label);
   destLabels.forEach(label);
   chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+
+  // ---- zoom & pan: the map magnifies, but arrows, markers and labels keep
+  //      their on-screen size (line widths via the --k CSS variable). ----
+  const zoom = d3.zoom().scaleExtent([1,8])
+    .extent([[0,0],[960,500]]).translateExtent([[0,0],[960,500]])
+    .on('zoom', ({transform}) => {
+      const k = transform.k;
+      zoomLayer.attr('transform', transform);
+      svg.style('--k', k);
+      zoomLayer.selectAll('.glow').attr('r', 20/k);
+      svg.selectAll('defs pattern').attr('patternTransform', 'rotate(45) scale(' + 1/k + ')'); // hatch stripes keep their width
+      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, 5/k));
+      zoomLayer.selectAll('[data-r]').attr('r', function(){ return this.dataset.r/k; });
+      zoomLayer.selectAll('[data-sw]').attr('stroke-width', function(){ return this.dataset.sw/k; });
+      zoomLayer.selectAll('.label-text')
+        .attr('x', d => d.x + d.dx/k).attr('y', d => d.y + d.dy/k).attr('font-size', 11/k);
+    });
+  svg.call(zoom).on('dblclick.zoom', null); // double-click stays a select/deselect, not a zoom
+  const controls = d3.select('#crudeMap').append('div').attr('class','zoom-controls');
+  controls.append('button').attr('title','Zoom in').text('+')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1.6));
+  controls.append('button').attr('title','Zoom out').text('−')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1/1.6));
+  controls.append('button').attr('title','Reset view').text('⟲')
+    .on('click', () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 });
 })(); // end CRUDE
 </script>
@@ -947,6 +995,8 @@ svg.append('defs').html(
 );
 
 function pt(c){ return projection(c); }
+// Chokepoint diamond of half-size s (in map units) centred on [lon,lat] c.
+function diamond(c, s){ const p=pt(c); return `M${p[0]},${p[1]-s}L${p[0]+s},${p[1]}L${p[0]},${p[1]+s}L${p[0]-s},${p[1]}Z`; }
 function curvePath(points, bend){
   const p = points.map(pt);
   let d = 'M'+p[0][0]+','+p[0][1];
@@ -1072,7 +1122,7 @@ function applyFocus(){
 const legend = d3.select('#refinedLegend');
 const legendHeader = legend.append('div').attr('class','legend-header');
 legendHeader.append('span').attr('class','legend-title').text('EXPORTER / HUB:');
-legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
 legend.selectAll('.legend-item').data(groups).join('div')
   .attr('class','legend-item')
   .attr('data-key', d=>d.key)
@@ -1097,8 +1147,10 @@ lineKey.selectAll('.line-key-row').data([
 
 d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
   const countries = topojson.feature(world, world.objects.countries).features;
+  // Everything drawn on the map lives in this layer, so zoom/pan moves it as one.
+  const zoomLayer = svg.append('g').attr('class','zoom-layer');
 
-  svg.append('g').selectAll('path').data(countries).join('path')
+  zoomLayer.append('g').selectAll('path').data(countries).join('path')
     .attr('class','country')
     .attr('d',path)
     .attr('fill', d=>{
@@ -1124,13 +1176,14 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
-  svg.append('g').selectAll('circle').data(destGlow).join('circle')
+  zoomLayer.append('g').selectAll('circle').data(destGlow).join('circle')
     .attr('class','glow')
     .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1])
     .attr('r',16).attr('fill',d=>groupByKey[d.group].color).attr('opacity',0.22).attr('stroke','none');
 
-  svg.append('g').selectAll('path').data(routes).join('path')
+  zoomLayer.append('g').selectAll('path').data(routes).join('path')
     .attr('class','route')
+    .classed('dashed', d => d.dash)
     .attr('d',d=>curvePath(d.pts,d.bend)).attr('fill','none')
     .attr('stroke',d=>groupByKey[d.group].color).attr('stroke-width',1.7)
     .attr('stroke-dasharray',d=>d.dash?'4 3':null).attr('opacity',0.95)
@@ -1143,29 +1196,29 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
-  svg.append('g').selectAll('path').data(chokepoints).join('path')
+  zoomLayer.append('g').selectAll('path').data(chokepoints).join('path')
     .attr('class','chokepoint')
-    .attr('d',d=>{const p=pt(d.c); return `M${p[0]},${p[1]-5}L${p[0]+5},${p[1]}L${p[0]},${p[1]+5}L${p[0]-5},${p[1]}Z`;})
-    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5)
+    .attr('d',d=>diamond(d.c,5))
+    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5).attr('data-sw',0.5)
     .on('mouseenter', function(event, d){ showTooltip(event, d.name, '#888780', d.detail); })
     .on('mousemove', moveTooltip)
     .on('mouseleave', hideTooltip);
 
   // EU hub marker
-  svg.append('circle')
+  zoomLayer.append('circle')
     .attr('class','chokepoint')
-    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6)
-    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5)
+    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6).attr('data-r', 6)
+    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5).attr('data-sw',1.5)
     .on('mouseenter', showEuTooltip)
     .on('click', event => { event.stopPropagation(); selectCountry('EU'); })
     .on('mousemove', moveTooltip)
     .on('mouseleave', hideTooltip);
 
   // Singapore hub marker (not a polygon at 110m resolution)
-  svg.append('circle')
+  zoomLayer.append('circle')
     .attr('class','chokepoint')
-    .attr('cx', pt(singaporeHub.c)[0]).attr('cy', pt(singaporeHub.c)[1]).attr('r', 5)
-    .attr('fill', groupByKey.sgp.color).attr('stroke','#e0ded4').attr('stroke-width',1.2)
+    .attr('cx', pt(singaporeHub.c)[0]).attr('cy', pt(singaporeHub.c)[1]).attr('r', 5).attr('data-r', 5)
+    .attr('fill', groupByKey.sgp.color).attr('stroke','#e0ded4').attr('stroke-width',1.2).attr('data-sw',1.2)
     .on('mouseenter', event => showCountryTooltip(event, singaporeHub.name, countryInfo['Singapore']))
     .on('click', event => { event.stopPropagation(); selectCountry('Singapore'); })
     .on('mousemove', moveTooltip)
@@ -1173,12 +1226,37 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
 
   function label(d){
     const p = pt(d.c);
-    svg.append('text').attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
+    zoomLayer.append('text').datum({x:p[0], y:p[1], dx:d.dx ?? 8, dy:d.dy})
+      .attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
       .attr('font-size',11).attr('fill',labelFill).text(d.name);
   }
   originLabels.forEach(label);
   destLabels.forEach(label);
   chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+
+  // ---- zoom & pan: the map magnifies, but arrows, markers and labels keep
+  //      their on-screen size (line widths via the --k CSS variable). ----
+  const zoom = d3.zoom().scaleExtent([1,8])
+    .extent([[0,0],[960,500]]).translateExtent([[0,0],[960,500]])
+    .on('zoom', ({transform}) => {
+      const k = transform.k;
+      zoomLayer.attr('transform', transform);
+      svg.style('--k', k);
+      zoomLayer.selectAll('.glow').attr('r', 16/k);
+      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, 5/k));
+      zoomLayer.selectAll('[data-r]').attr('r', function(){ return this.dataset.r/k; });
+      zoomLayer.selectAll('[data-sw]').attr('stroke-width', function(){ return this.dataset.sw/k; });
+      zoomLayer.selectAll('.label-text')
+        .attr('x', d => d.x + d.dx/k).attr('y', d => d.y + d.dy/k).attr('font-size', 11/k);
+    });
+  svg.call(zoom).on('dblclick.zoom', null); // double-click stays a select/deselect, not a zoom
+  const controls = d3.select('#refinedMap').append('div').attr('class','zoom-controls');
+  controls.append('button').attr('title','Zoom in').text('+')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1.6));
+  controls.append('button').attr('title','Zoom out').text('−')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1/1.6));
+  controls.append('button').attr('title','Reset view').text('⟲')
+    .on('click', () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
 });
 })(); // end REFINED
 </script>
