@@ -8,8 +8,14 @@
 
 ------
 
+### OIL Analysis:
+- <ins>**[Global Map](https://mdipietro09.github.io/ClaudeCodeAI/OILmap/OIL.html)**</ins>
+<br>
+
+------
+
 ### BOND Forecast:
-- <ins>**[Main](https://mdipietro09.github.io/ClaudeCodeAI/BONDchart/PLOT.html)**</ins>
+- <ins>**[Main](https://mdipietro09.github.io/ClaudeCodeAI/BONDchart/BOND.html)**</ins>
 <br>
 
 - <ins>**[Error](https://mdipietro09.github.io/ClaudeCodeAI/BONDchart/FORECAST.html)**</ins>
@@ -18,7 +24,7 @@
 ------
 
 ### GYM App:
-- <ins>**[My Workout](https://mdipietro09.github.io/ClaudeCodeAI/GYMapp/APP.html)**</ins>
+- <ins>**[My Workout](https://mdipietro09.github.io/ClaudeCodeAI/GYMapp/GYM.html)**</ins>
 <br>
 
 ------
