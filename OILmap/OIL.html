@@ -140,7 +140,8 @@ const groups = [
   { key:'kaz', name:'Kazakhstan', color:'#e34948', stroke:'#8a1f1e', hatch:true, desc:'CPC pipeline into Russia’s Black Sea export system; linked to but distinct from Russia’s own crude.' },
   { key:'nk', name:'North Korea', color:'#e34948', stroke:'#8a1f1e', hatch:true, desc:'Within Russia’s sphere of influence; sanctioned, imports only small capped volumes.' },
   { key:'afr', name:'Africa (Nigeria, Libya, Algeria, Angola)', color:'#eb6834', stroke:'#993c1d', desc:'Light, sweet and waxy.' },
-  { key:'eu',  name:'North Sea (Norway, UK)', color:'#e87ba4', stroke:'#993556', desc:'Light, sweet.', benchmark:'Brent' }
+  { key:'eu',  name:'North Sea (Norway, UK)', color:'#e87ba4', stroke:'#993556', desc:'Light, sweet.', benchmark:'Brent' },
+  { key:'aze', name:'Azerbaijan', color:'#e87ba4', stroke:'#993556', hatch:true, desc:'Azeri Light — light, sweet, priced off Brent; linked to but distinct from the North Sea. BTC pipeline to Ceyhan, bypassing Russia.' }
 ];
 const groupByKey = Object.fromEntries(groups.map(g=>[g.key,g]));
 
@@ -194,7 +195,10 @@ const countryInfo = {
     exports:[{to:'EU',pct:80},{to:'UK',pct:15},{to:'Other',pct:5}],
     imports:[{from:'None',pct:0}] },
   'Kazakhstan': { group:'kaz', note:'CPC pipeline to Novorossiysk, then Black Sea tanker.',
-    exports:[{to:'EU',pct:65},{to:'China',pct:20},{to:'Other',pct:15}],
+    exports:[{to:'EU',pct:65},{to:'China',pct:20},{to:'Israel',pct:10},{to:'Other',pct:5}],
+    imports:[{from:'None',pct:0}] },
+  'Azerbaijan': { group:'aze', note:'Azeri Light from the Caspian ACG fields. BTC pipeline (Baku–Tbilisi–Ceyhan), then Mediterranean tanker — Italy is the main buyer.',
+    exports:[{to:'EU',pct:65},{to:'Israel',pct:20},{to:'Turkey',pct:10},{to:'Other',pct:5}],
     imports:[{from:'None',pct:0}] },
   'Brazil': { group:'latam', note:'Offshore pre-salt fields (Santos basin). China is the primary buyer.',
     exports:[{to:'China',pct:45},{to:'EU',pct:18},{to:'USA',pct:12},{to:'India',pct:6},{to:'Other Asia',pct:10},{to:'Other',pct:9}],
@@ -218,7 +222,10 @@ const countryInfo = {
     imports:[{from:'Saudi Arabia',pct:30},{from:'USA',pct:15},{from:'Iraq',pct:10},{from:'Other',pct:45}] },
   'Turkey': { group:null, note:'Key seaborne outlet for Russian barrels since 2022.',
     exports:[{to:'None',pct:0}],
-    imports:[{from:'Russia',pct:45},{from:'Iraq',pct:20},{from:'Saudi Arabia',pct:10},{from:'Iran',pct:5},{from:'Other',pct:20}] },
+    imports:[{from:'Russia',pct:45},{from:'Iraq',pct:20},{from:'Saudi Arabia',pct:10},{from:'Iran',pct:5},{from:'Azerbaijan',pct:8},{from:'Other',pct:12}] },
+  'Israel': { group:null, note:'No domestic crude; Haifa and Ashdod refineries run on imports. No Gulf supply and no Red Sea route (Houthi attacks) — everything arrives across the Mediterranean. Azerbaijan and Kazakhstan supplied ~70% (Nov 2023–Oct 2025).',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Azerbaijan',pct:45},{from:'Kazakhstan',pct:25},{from:'Other',pct:30}] },
   'Japan': { group:null, note:'Heavily dependent on Middle East crude.',
     exports:[{to:'None',pct:0}],
     imports:[{from:'Saudi Arabia',pct:35},{from:'USA',pct:10},{from:'Other',pct:55}] },
@@ -235,16 +242,17 @@ const countryInfo = {
 
 /* The EU is drawn as a single hub point (not a real country polygon), so
    it gets its own hoverable marker instead of a countryInfo entry. These
-   shares ARE hard-sourced (Eurostat, Q1 2026) except "Other suppliers",
-   which is the remainder needed to reach 100%. */
+   shares ARE hard-sourced (Eurostat, Q1 2026) except Azerbaijan (project
+   estimate, carved out of the remainder) and "Other suppliers", which is
+   the remainder needed to reach 100%. */
 const euHub = {
   name: 'EU (27)', c: [15,48],
   note: 'Q1 2026 share of total EU petroleum-oil imports (Eurostat).',
   imports: [
     {from:'USA',pct:17.8},{from:'Norway',pct:16.6},{from:'Kazakhstan',pct:9.6},
     {from:'Libya',pct:9},{from:'Saudi Arabia',pct:6.8},{from:'Nigeria',pct:5.8},
-    {from:'Iraq',pct:5.8},{from:'Russia',pct:0.8},
-    {from:'Other suppliers',pct:27.8}
+    {from:'Iraq',pct:5.8},{from:'Azerbaijan (est.)',pct:4.5},{from:'Russia',pct:0.8},
+    {from:'Other suppliers',pct:23.3}
   ]
 };
 
@@ -282,7 +290,8 @@ const originLabels = [
   {name:'Algeria (exports)', c:[3,28], dy:-8},
   {name:'Angola (exports)', c:[17,-12], dy:14},
   {name:'Norway (exports)', c:[10,61], dy:-8},
-  {name:'Kazakhstan', c:[68,48], dy:14},
+  {name:'Kazakhstan', c:[68,48], dy:-8},
+  {name:'Azerbaijan (exports)', c:[48,40.4], dy:-6},
   {name:'Brazil (exports)', c:[-40,-22], dy:14},
   {name:'Mexico (exports)', c:[-92,19], dy:4, dx:-104}
 ];
@@ -294,6 +303,7 @@ const destLabels = [
   {name:'India (imports)', c:[78,21], dy:14},
   {name:'Cuba (imports)', c:[-79,22], dy:14, dx:10},
   {name:'Turkey (imports)', c:[29,39.5], dy:-7, dx:-24},
+  {name:'Israel (imports)', c:[35,32.8], dy:-12, dx:-96},
   {name:'Japan (imports)', c:[139,37], dy:-10, dx:6},
   {name:'UK (imports/exports)', c:[-2,53.5], dy:4, dx:-128}
 ];
@@ -329,6 +339,8 @@ const routes = [
   {pts:[[1,57.5],[15,48]], group:'eu', dash:false, bend:6, from:["United Kingdom"], to:["EU"], label:'UK → EU', detail:'North Sea (Brent) crude, mainly to the Netherlands and Germany — ~60% of UK crude exports.'},
   {pts:[[1,57.5],[-12,40],[-18,10],[18,-34],[80,-12],[108,34]], group:'eu', dash:true, bend:6, from:["United Kingdom"], to:["China"], label:'UK → China (Cape of Good Hope)', detail:'~15% of UK crude exports. North Sea VLCC cargoes go the long way round Africa rather than through Suez / the Red Sea.'},
   {pts:[[10,61],[15,48]], group:'eu', dash:false, bend:-8, from:["Norway"], to:["EU"], label:'Norway → EU', detail:'Short North Sea hop. 16.6% of EU petroleum-oil imports (Q1 2026).'},
+  {pts:[[48,40.4],[35.8,36.9],[15,48]], group:'aze', dash:true, bend:8, from:["Azerbaijan"], to:["EU"], label:'Azerbaijan → EU', detail:'~65% of Azerbaijan’s crude exports; ~4.5% of EU crude imports (project estimate). Azeri Light via the BTC pipeline to Ceyhan, then Mediterranean tanker — mainly to Italy.'},
+  {pts:[[48,40.4],[35.8,36.9],[35,32.8]], group:'aze', dash:true, bend:4, from:["Azerbaijan"], to:["Israel"], label:'Azerbaijan → Israel', detail:'~20% of Azerbaijan’s crude exports; ~45% of Israel’s crude imports — its largest supplier (~94k bbl/d in 2025, Kpler). BTC pipeline to Ceyhan, then a short tanker hop — still flowing despite Turkey’s May 2024 trade ban.'},
   {pts:[[68,48],[15,48]], group:'kaz', dash:true, bend:14, from:["Kazakhstan"], to:["EU"], label:'Kazakhstan → EU', detail:'CPC pipeline to Novorossiysk, then Black Sea tanker. 9.6% of EU petroleum-oil imports (Q1 2026).'},
   // ---- import connections: every flow in the data between two mapped countries.
   //      minor:true = hidden on the overview, shown when one of its countries
@@ -346,6 +358,7 @@ const routes = [
   {pts:[[44, 33], [33, 39.5]], group:'me', dash:true, bend:6, minor:true, from:["Iraq"], to:["Turkey"], label:'Iraq → Turkey', detail:"~20% of Turkey’s crude imports. Kirkuk–Ceyhan pipeline."},
   {pts:[[44, 33], [56.25, 26.6], [50, 12], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:6, minor:true, from:["Iraq"], to:["United States of America"], label:'Iraq → USA', detail:"~5% of Iraq’s crude exports. Via Hormuz, the Red Sea, Suez and the Atlantic."},
   {pts:[[68, 48], [108, 34]], group:'kaz', dash:true, bend:12, from:["Kazakhstan"], to:["China"], label:'Kazakhstan → China', detail:"~20% of Kazakhstan’s crude exports; ~5% of China’s crude imports. Kazakhstan–China pipeline, overland."},
+  {pts:[[68, 48], [37.8, 44.7], [29, 41.1], [26, 37], [35, 32.8]], group:'kaz', dash:true, bend:4, minor:true, from:["Kazakhstan"], to:["Israel"], label:'Kazakhstan → Israel', detail:"~10% of Kazakhstan’s crude exports; ~25% of Israel’s crude imports. CPC pipeline to Novorossiysk, then through the Turkish Straits and across the Mediterranean."},
   {pts:[[-92, 19], [-79, 22]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["Cuba"], label:'Mexico → Cuba', detail:"~3% of Mexico’s crude exports; ~25% of Cuba’s crude imports. Short Gulf of Mexico hop; subsidized shipments."},
   {pts:[[-92, 19], [-83, 24], [15, 48]], group:'latam', dash:false, bend:-10, minor:true, from:["Mexico"], to:["EU"], label:'Mexico → EU', detail:"~15% of Mexico’s crude exports. Through the Florida Straits and across the Atlantic."},
   {pts:[[-92, 19], [-83, 24], [-30, 5], [19, -35], [78, 21]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["India"], label:'Mexico → India', detail:"~10% of Mexico’s crude exports. Across the Atlantic and round the Cape of Good Hope."},
@@ -371,6 +384,7 @@ const routes = [
   {pts:[[-102, 31], [-62, 14], [-33, -6], [-43, -23]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["Brazil"], label:'USA → Brazil', detail:"~40% of Brazil’s crude imports. Down the Atlantic coast."},
   {pts:[[-102, 31], [-75, 32], [-72, 46]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Canada"], label:'USA → Canada', detail:"~75.6% of Canada’s crude imports. Up the East Coast to Eastern Canadian refineries."},
   {pts:[[-102, 31], [-20, 15], [19, -35], [78, 21]], group:'usa', dash:true, bend:8, minor:true, from:["United States of America"], to:["India"], label:'USA → India', detail:"~10% of USA’s crude exports; ~8% of India’s crude imports. The long way round the Cape of Good Hope."},
+  {pts:[[48, 40.4], [33, 39.5]], group:'aze', dash:true, bend:6, minor:true, from:["Azerbaijan"], to:["Turkey"], label:'Azerbaijan → Turkey', detail:"~10% of Azerbaijan’s crude exports; ~8% of Turkey’s crude imports. BTC pipeline across Georgia into Turkey; feeds SOCAR’s STAR refinery at Aliağa."},
   {pts:[[-66, 8], [15, 48]], group:'ven', dash:false, bend:-16, minor:true, from:["Venezuela"], to:["EU"], label:'Venezuela → EU', detail:"~10% of Venezuela’s crude exports. Across the Atlantic, mainly to Spain."},
   {pts:[[-66, 8], [-20, 0], [19, -35], [78, 21]], group:'ven', dash:false, bend:8, minor:true, from:["Venezuela"], to:["India"], label:'Venezuela → India', detail:"~15% of Venezuela’s crude exports; ~4% of India’s crude imports. Across the Atlantic and round the Cape of Good Hope."},
   {pts:[[178,32],[128,36.5]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["South Korea"], label:'Mexico → South Korea', detail:'Continuation of the Panama Canal route.'},
@@ -382,7 +396,7 @@ const destGlow = [
   {c:[108,34], group:'me'},{c:[108,34], group:'rus'},{c:[108,34], group:'ven'},
   {c:[15,48], group:'usa'},{c:[128,36.5], group:'usa'},
   {c:[-102,31], group:'ven'},{c:[78,21], group:'rus'},
-  {c:[15,48], group:'me'},{c:[15,48], group:'afr'},{c:[15,48], group:'eu'},{c:[15,48], group:'kaz'},
+  {c:[15,48], group:'me'},{c:[15,48], group:'afr'},{c:[15,48], group:'eu'},{c:[15,48], group:'kaz'},{c:[15,48], group:'aze'},{c:[35,32.8], group:'aze'},
   {c:[-79,22], group:'ven'},{c:[108,34], group:'latam'},{c:[108,34], group:'eu'},{c:[-2,53], group:'usa'},{c:[-102,31], group:'latam'}
 ];
 
@@ -415,6 +429,9 @@ svg.append('defs').html(
   '<pattern id="kazakhstanStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
   '<rect width="6" height="6" fill="'+landFill+'"/>' +
   '<line x1="0" y1="0" x2="0" y2="6" stroke="#e34948" stroke-width="3"/></pattern>' +
+  '<pattern id="azerbaijanStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+  '<rect width="6" height="6" fill="'+landFill+'"/>' +
+  '<line x1="0" y1="0" x2="0" y2="6" stroke="#e87ba4" stroke-width="3"/></pattern>' +
   '<pattern id="latamStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
   '<rect width="6" height="6" fill="'+landFill+'"/>' +
   '<line x1="0" y1="0" x2="0" y2="6" stroke="#2a78d6" stroke-width="3"/></pattern>'
@@ -588,6 +605,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
       if (n==='Canada') return 'url(#canadaStripes)';
       if (n==='Kazakhstan' || n==='North Korea') return 'url(#kazakhstanStripes)';
       if (n==='Brazil' || n==='Mexico') return 'url(#latamStripes)';
+      if (n==='Azerbaijan') return 'url(#azerbaijanStripes)';
       if (isImporter(n)) return importFill;
       const info = countryInfo[n];
       return (info && info.group) ? groupByKey[info.group].color : landFill;
@@ -597,6 +615,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
       if (n==='Canada') return '#8a5f00';
       if (n==='Kazakhstan' || n==='North Korea') return '#8a1f1e';
       if (n==='Brazil' || n==='Mexico') return '#0c447c';
+      if (n==='Azerbaijan') return '#993556';
       if (isImporter(n)) return importStroke;
       const info = countryInfo[n];
       return (info && info.group) ? groupByKey[info.group].stroke : landStroke;
@@ -711,13 +730,13 @@ const groupByKey = Object.fromEntries(groups.map(g=>[g.key,g]));
    group:null = importer only, drawn in the neutral land color. */
 const countryInfo = {
   'United States of America': { group:"usa", note:"Gulf Coast refineries — the world’s biggest refined-product exporter.",
-    exports:[{to:"Mexico",pct:20},{to:"Other Latin America",pct:25},{to:"EU",pct:12},{to:"Canada",pct:8},{to:"Asia",pct:10},{to:"Other",pct:25}],
+    exports:[{to:"Mexico",pct:20},{to:"Other Latin America",pct:25},{to:"EU",pct:12},{to:"Canada",pct:8},{to:"Asia",pct:10},{to:"Israel",pct:1},{to:"Other",pct:24}],
     imports:[{from:"Canada",pct:45},{from:"ARA hub (Netherlands)",pct:12},{from:"South Korea",pct:8},{from:"India",pct:6},{from:"Other",pct:29}] },
   'India': { group:"ind", note:"Jamnagar (Reliance) — the largest refining complex on Earth.",
     exports:[{to:"EU",pct:25},{to:"Africa",pct:18},{to:"Singapore",pct:12},{to:"UAE",pct:10},{to:"Australia",pct:8},{to:"USA",pct:7},{to:"Other Asia",pct:20}],
     imports:[{from:"UAE",pct:30},{from:"Saudi Arabia",pct:25},{from:"Qatar",pct:15},{from:"USA",pct:10},{from:"Other",pct:20}] },
   'Russia': { group:"rus", note:"Diesel rerouted away from the EU after the Feb 2023 product embargo.",
-    exports:[{to:"Turkey",pct:25},{to:"Africa",pct:22},{to:"Asia (incl. UAE transshipment)",pct:20},{to:"Brazil",pct:12},{to:"Other / undisclosed",pct:21}],
+    exports:[{to:"Turkey",pct:25},{to:"Africa",pct:22},{to:"Asia (incl. UAE transshipment)",pct:20},{to:"Brazil",pct:12},{to:"Israel",pct:1},{to:"Other / undisclosed",pct:20}],
     imports:[{from:"None",pct:0}] },
   'Saudi Arabia': { group:"gulf", note:"Jazan (Red Sea) and SATORP/YASREF mega-refineries.",
     exports:[{to:"China",pct:18},{to:"EU",pct:15},{to:"India",pct:10},{to:"Japan",pct:10},{to:"South Korea",pct:10},{to:"East Africa",pct:12},{to:"Other Asia",pct:25}],
@@ -761,6 +780,9 @@ const countryInfo = {
   'Turkey': { group:null, note:"Russia’s largest diesel buyer; re-exports products to the EU.",
     exports:[{to:"EU",pct:45},{to:"Other",pct:55}],
     imports:[{from:"Russia",pct:55},{from:"Gulf refiners",pct:15},{from:"India",pct:10},{from:"Other",pct:20}] },
+  'Israel': { group:null, note:"Refines most of its own fuel (Bazan in Haifa, Paz in Ashdod) from imported crude; imports top up diesel, jet and gasoline — and surged when Iranian missiles shut Bazan in June 2025. Russia supplied ~half of refined imports (Nov 2023–Oct 2025); the USA is the sole JP-8 military jet-fuel supplier.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"Russia",pct:50},{from:"Greece / Italy / Cyprus (EU refiners)",pct:25},{from:"USA",pct:10},{from:"Other",pct:15}] },
   'Japan': { group:null, note:"Imports mostly naphtha and LPG feedstock.",
     exports:[{to:"None",pct:0}],
     imports:[{from:"South Korea",pct:30},{from:"Gulf refiners",pct:25},{from:"China",pct:12},{from:"Other",pct:33}] },
@@ -828,6 +850,7 @@ const destLabels = [
   {name:'EU (imports)', c:[15,48], dy:14},
   {name:'Australia', c:[151,-33.9], dy:14},
   {name:'Indonesia', c:[106.8,-6.2], dy:14},
+  {name:'Israel', c:[35,32.8], dy:6, dx:-44},
   {name:'Japan', c:[139,37], dy:14, dx:8},
   {name:'Vietnam', c:[106.7,10.8], dy:-2, dx:10},
   {name:'UK', c:[-2,53.5], dy:4, dx:-30},
@@ -846,6 +869,7 @@ const routes = [
   {pts:[[-95,29.5],[-100,21]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Mexico"], label:'USA → Mexico', detail:'~20% of US refined exports — the single largest destination. Gasoline & diesel by tanker, pipeline and rail.'},
   {pts:[[-95,29.5],[-79.5,9],[-77,-12]], group:'usa', dash:false, bend:6, from:["United States of America"], to:[], label:'USA → Pacific Latin America (Panama Canal)', detail:'Peru, Chile, Ecuador and Central America — part of the ~25% going to Latin America.'},
   {pts:[[-95,29.5],[-45,-20]], group:'usa', dash:false, bend:-20, from:["United States of America"], to:["Brazil"], label:'USA → Brazil', detail:'Brazil’s largest diesel supplier (~40% of its imports).'},
+  {pts:[[-95,29.5],[-6,36],[35,32.8]], group:'usa', dash:false, bend:-10, from:["United States of America"], to:["Israel"], label:'USA → Israel (JP-8)', detail:'~10% of Israel’s refined imports — the sole supplier of JP-8 military jet fuel. Across the Atlantic, through Gibraltar and the Mediterranean.'},
   {pts:[[-95,29.5],[15,48]], group:'usa', dash:false, bend:-30, from:["United States of America"], to:["EU"], label:'USA → EU', detail:'~12% of US refined exports; the EU’s top product supplier (~22%).'},
   // India
   {pts:[[70,22.3],[43.4,12.6],[32.3,30.5],[15,48]], group:'ind', dash:false, bend:8, from:["India"], to:["EU"], label:'India → EU (via Suez)', detail:'~25% of India’s product exports. India replaced much of the lost Russian diesel after the 2023 embargo.'},
@@ -857,6 +881,7 @@ const routes = [
   {pts:[[29,60],[3.4,6.4]], group:'rus', dash:false, bend:22, from:["Russia"], to:["Nigeria"], label:'Russia → West Africa (Baltic)', detail:'Part of the ~22% going to Africa.'},
   {pts:[[29,60],[-45,-20]], group:'rus', dash:false, bend:30, from:["Russia"], to:["Brazil"], label:'Russia → Brazil (Baltic)', detail:'~12% — Brazil became a major Russian diesel buyer post-2022.'},
   {pts:[[37.8,44.7],[32.3,30.5],[43.4,12.6],[51,13.5],[59,21],[56.3,25.1]], group:'rus', dash:true, bend:4, from:["Russia"], to:["United Arab Emirates"], label:'Russia → UAE (Fujairah blending)', detail:'Discounted Russian fuel oil blended in Fujairah and re-exported — ~35% of UAE product imports.'},
+  {pts:[[37.8,44.7],[29,41.1],[26,37],[35,32.8]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Israel"], label:'Russia → Israel (Black Sea)', detail:'~50% of Israel’s refined imports (Nov 2023–Oct 2025, Oil Change International) — diesel and gasoil through the Turkish Straits and across the Mediterranean. ~1% of Russia’s product exports.'},
   {pts:[[32,39.5],[15,48]], group:'rus', dash:true, bend:6, from:["Turkey", "Russia"], to:["EU"], label:'Turkey → EU (Russian-origin re-exports)', detail:'Indirect route back into Europe — Turkish re-exports are ~6% of EU product imports.'},
   // Gulf refiners
   {pts:[[48,28.5],[56.25,26.6],[59,21],[51,13.5],[43.4,12.6],[32.3,30.5],[15,48]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["EU"], label:'Gulf refiners → EU (Hormuz, Bab-el-Mandeb, Suez)', detail:'Saudi Arabia 12%, UAE 9%, Kuwait 7% of EU product imports. Al-Zour output is largely aimed at Europe.'},
@@ -885,7 +910,7 @@ const destGlow = [
   {c:[15,48], group:'usa'},{c:[15,48], group:'ind'},{c:[15,48], group:'gulf'},{c:[15,48], group:'ara'},{c:[15,48], group:'rus'},
   {c:[-100,21], group:'usa'},{c:[-77,-12], group:'usa'},
   {c:[-45,-20], group:'usa'},{c:[-45,-20], group:'rus'},
-  {c:[32,39.5], group:'rus'},{c:[56.3,25.1], group:'rus'},
+  {c:[32,39.5], group:'rus'},{c:[35,32.8], group:'rus'},{c:[56.3,25.1], group:'rus'},
   {c:[3.4,6.4], group:'rus'},{c:[3.4,6.4], group:'ara'},
   {c:[39.5,-5], group:'ind'},{c:[39.5,-5], group:'gulf'},
   {c:[103.8,1.35], group:'ind'},{c:[103.8,1.35], group:'chn'},

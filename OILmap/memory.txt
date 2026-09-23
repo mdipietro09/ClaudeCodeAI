@@ -46,7 +46,8 @@ Three <script> blocks:
 - Every selector is scoped to the view's own svg / legend (svg.selectAll,
   legend.selectAll), never global d3.selectAll.
 - SVG <defs> ids are document-global, so they're unique per view:
-  crude: arrow, canadaStripes, kazakhstanStripes, latamStripes;
+  crude: arrow, canadaStripes, kazakhstanStripes, latamStripes,
+  azerbaijanStripes;
   refined: refined-arrow.
 - Shared CSS only (classes .country, .route, .glow, .chokepoint,
   .label-text, .legend-*, .line-key*, .faded, .hovered, .selected, .dimmed).
@@ -125,19 +126,23 @@ Legend title "OIL TYPE:". Groups = crude family, legend in this order:
 | nk    | North Korea                               | #e34948 | #8a1f1e | hatch | Within Russia's sphere of influence (political grouping); sanctioned, small capped imports. |
 | afr   | Africa (Nigeria, Libya, Algeria, Angola)  | #eb6834 | #993c1d | solid | Light, sweet and waxy. |
 | eu    | North Sea (Norway, UK)                    | #e87ba4 | #993556 | solid | (BRENT) Light, sweet. |
+| aze   | Azerbaijan                                | #e87ba4 | #993556 | hatch | Azeri Light: light, sweet, Brent-priced; BTC pipeline to Ceyhan, bypassing Russia. |
 Hatched = diagonal stripes of the color over landFill (SVG patterns
 canadaStripes / kazakhstanStripes (Kazakhstan + North Korea) /
-latamStripes (Brazil + Mexico)); legend swatch is a striped gradient.
+latamStripes (Brazil + Mexico) / azerbaijanStripes); legend swatch is a striped gradient.
 
 countryInfo (colored): Iran, Saudi Arabia, Iraq (me); United States of
 America + alias "United States" (usa); Canada (can); Venezuela (ven);
 Brazil, Mexico (latam); Russia (rus); Kazakhstan (kaz); North Korea (nk);
-Nigeria, Libya, Algeria, Angola (afr); Norway, United Kingdom (eu).
+Nigeria, Libya, Algeria, Angola (afr); Norway, United Kingdom (eu);
+Azerbaijan (aze).
 Importers (group:null → importFill gray): China, India, South Korea,
-Turkey, Japan, Cuba — plus all EU-27 members (EU entity).
+Turkey, Japan, Cuba, Israel — plus all EU-27 members (EU entity).
 euHub imports are Eurostat Q1 2026 (hard-sourced; do not edit):
 USA 17.8, Norway 16.6, Kazakhstan 9.6, Libya 9, Saudi Arabia 6.8,
-Nigeria 5.8, Iraq 5.8, Russia 0.8, Other suppliers 27.8.
+Nigeria 5.8, Iraq 5.8, Russia 0.8 — plus "Azerbaijan (est.)" 4.5 (project
+estimate, NOT Eurostat; carved out of the remainder) and Other suppliers
+23.3.
 Key modelling decisions (user-confirmed):
 - USA is ONE point [-102,31] labeled "USA (imports/exports)" — the US is a
   net crude importer. No "USA Gulf Coast" anywhere on crude.
@@ -149,19 +154,30 @@ Key modelling decisions (user-confirmed):
   power generation needs."
 - Brazil: China is the primary destination (45%). Mexico: USA dominant
   buyer (60%).
+- Azerbaijan (added 2026-09-23): Brent-type crude, so hatched North Sea
+  pink, NOT Russia red (BTC deliberately bypasses Russia). Exports EU 65 /
+  Israel 20 / Turkey 10 / Other 5. Turkey imports now include Azerbaijan 8 (Other
+  20 -> 12). Label "Azerbaijan (exports)" at [48,40.4]; Kazakhstan label
+  moved ABOVE its point (dy -8) to make room.
+- Israel (added 2026-09-23): importer (gray), point [35,32.8], label
+  "Israel (imports)" placed LEFT over the Med (dx -96, dy -12) to clear
+  Algeria/Iraq labels. Imports Azerbaijan 45 (Kpler 2025) / Kazakhstan 25 /
+  Other 30 (Brazil, Gabon, Nigeria, Angola not drawn — user chose only
+  AZ + KZ). Kazakhstan exports now EU 65 / China 20 / Israel 10 / Other 5.
 - North Korea imports China 65 (Dandong pipeline, the real main source) /
   Russia 30 / Other 5; colored red for Russian influence, not supply.
 Chokepoints: Strait of Hormuz [56.25,26.6], Suez Canal [32.3,30.5] (label
 below, dy 14), Panama Canal [-79.5,9], Cape of Good Hope [18,-34].
 Labels: Iran/Saudi Arabia/Iraq/Venezuela/Russia/Nigeria/Libya/Algeria/
-Angola/Brazil/Mexico/Norway "(exports)"; Canada; Kazakhstan; China/EU/
-South Korea/India/Cuba/Turkey/Japan "(imports)"; USA and UK
+Angola/Brazil/Mexico/Norway/Azerbaijan "(exports)"; Canada; Kazakhstan; China/EU/
+South Korea/India/Cuba/Turkey/Japan/Israel "(imports)"; USA and UK
 "(imports/exports)".
-Routes: 68 arrows. The first 25 are the core story routes (Iran→China,
+Routes: 72 arrows. The first 27 are the core story routes (Iran→China,
 Saudi/Iraq→EU via Suez, USA→EU/UK/Asia via Panama + Cape, Canada→USA,
 Venezuela→USA/Cuba/China, Brazil→China via Cape, Mexico→USA,
 Russia→China (pipeline)/India/North Korea, Africa→EU, UK→EU, UK→China via
-Cape, Norway→EU, Kazakhstan→EU). Then an "import connections" block of 43
+Cape, Norway→EU, Azerbaijan→EU and →Israel via BTC/Ceyhan (dotted),
+Kazakhstan→EU). Then an "import connections" block of 45
 routes so that EVERY flow in countryInfo/euHub between two mapped
 entities has an arrow (verified by script both ways: no data flow without
 an arrow, no arrow without data).
@@ -169,7 +185,8 @@ Visibility rule for that block: always visible if >=20% of the exporter's
 exports or >=30% of the importer's imports (12 routes, e.g. Saudi→China/
 Japan/South Korea, Iraq→China, Russia→Turkey, USA→Canada/Brazil,
 Norway→UK, Angola→China, Kazakhstan→China, Nigeria→India, China→North
-Korea); everything else is minor:true (31 routes).
+Korea); everything else is minor:true (33 routes, incl. Azerbaijan→
+Turkey and Kazakhstan→Israel).
 China→North Korea has group:null → drawn gray (#a3a29c) via routeColor().
 Dotted (dash) routes = pipeline/overland, the long way round, or a
 disrupted/irregular flow.
@@ -195,7 +212,7 @@ countryInfo was GENERATED from refined.xlsx "Export-Import % (map data)"
 (all blocks sum to 100 or 0); notes written by hand. Colored: USA, India,
 Russia, Saudi Arabia, Kuwait, UAE, Singapore (hub marker), Netherlands,
 Belgium, South Korea, China. Importers (gray): Mexico, Brazil, Australia,
-Indonesia, Nigeria, Turkey, Japan, Vietnam, United Kingdom, Canada, and EU
+Indonesia, Nigeria, Turkey, Israel, Japan, Vietnam, United Kingdom, Canada, and EU
 members except NL/BE. EU hub = refined diesel import mix (USA 22, India
 18, Saudi 12, UAE 9, Kuwait 7, Turkey 6, Russia 0 (embargo), Other 26).
 The US here is "USA Gulf Coast (exports)" — correct for refined (net
@@ -206,12 +223,17 @@ Labels: USA Gulf Coast (exports), India (Jamnagar), Russia (Baltic),
 Russia (Black Sea), Saudi Arabia, Kuwait, UAE, Netherlands (ARA), Belgium
 (ARA), South Korea, China, Singapore hub, Mexico, Pacific Latin America,
 Brazil, Nigeria / West Africa, East Africa, Turkey, EU (imports),
-Australia, Indonesia, Japan, Vietnam, UK, Canada.
-Routes: 29 (one row each in refined.xlsx "Export flows"). Dotted =
+Australia, Indonesia, Israel (dx -44, dy 6), Japan, Vietnam, UK, Canada.
+Routes: 31 (one row each in refined.xlsx "Export flows"). Dotted =
 indirect flows: Russia→UAE (Fujairah blending), Turkey→EU (Russian-origin
 re-exports; from:["Turkey","Russia"]), ARA→EU inland (barges). Gulf/Red
 Sea routes use sea waypoints [59,21] and [51,13.5] to avoid crossing
 Arabia. No minor routes.
+Israel (added 2026-09-23): importer; refines most of its own fuel, imports
+are a top-up. Imports Russia 50 / Greece-Italy-Cyprus 25 (hover only, EU
+hub is import-only) / USA 10 (JP-8) / Other 15. Arrows: Russia→Israel
+(Black Sea, Turkish Straits) and USA→Israel (via Gibraltar). US and Russia
+exports each gained Israel 1 (taken from their Other).
 Legend: exporter rows + "ROUTES:" key — Solid = direct tanker route;
 Dotted = indirect flow (re-export, blending / transshipment) or inland
 barge / pipeline.
