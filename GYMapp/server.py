@@ -258,7 +258,7 @@ def build_state(wb):
 # ---------------------------------------------------------------- routes
 @app.route("/")
 def index():
-    return send_from_directory(BASE_DIR, "APP.html")
+    return send_from_directory(BASE_DIR, "GYM.html")
 
 
 @app.route("/api/state")
@@ -314,5 +314,5 @@ def api_skip():
 
 if __name__ == "__main__":
     get_workbook()  # create gains.xlsx on first run
-    print("GAINS MAP running on http://localhost:5001  (data: %s)" % XLSX_PATH)
+    print("running on http://localhost:5001  (data: %s)" % XLSX_PATH)
     app.run(host="127.0.0.1", port=5001, debug=False)

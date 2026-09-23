@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OIL</title>
+<style>
+  :root{
+    --bg:#000000; --fg:#f0efec; --sub:#a3a29c; --panel:#161615; --panel-border:#3a3a37;
+    --land:#262623; --land-stroke:#4a4944; --chip-bg:#161615;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:24px; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:0.06em; margin:0 0 14px; }
+
+  .type-toggle { display:inline-flex; gap:4px; padding:4px; border-radius:9px; background:var(--panel); border:1px solid var(--panel-border); margin-bottom:20px; }
+  .type-btn {
+    font:inherit; font-size:12px; font-weight:600; letter-spacing:0.04em; color:var(--sub);
+    background:none; border:none; padding:7px 16px; border-radius:6px; cursor:pointer;
+    transition:background .15s ease, color .15s ease;
+  }
+  .type-btn:hover { color:var(--fg); }
+  .type-btn.active { background:var(--fg); color:#000; }
+
+  .wrap { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .map-col { flex:1 1 auto; min-width:0; }
+  .map { width:100%; position:relative; }
+  svg { width:100%; height:auto; display:block; }
+
+  .legend { display:flex; flex-direction:column; gap:2px; margin-top:14px; font-size:12.5px; color:var(--sub); flex:0 0 260px; }
+  .legend-item {
+    display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px;
+    cursor:pointer; user-select:none; transition:background .15s ease;
+  }
+  .legend-item:hover { background: rgba(127,127,127,0.12); }
+  .legend-item.dimmed { opacity:0.35; }
+  .legend-header { padding:0 8px; margin:0 0 8px; }
+  .legend-title { display:block; font-size:13px; font-weight:700; color:var(--fg); letter-spacing:0.03em; margin:0 0 2px; }
+  .legend .sw { width:12px; height:12px; flex:0 0 12px; display:inline-block; border-radius:3px; }
+  .legend b { color:var(--fg); font-weight:600; }
+  .legend-hint { display:block; font-size:8.5px; line-height:1.2; color:var(--sub); }
+  .line-key { margin-top:14px; padding:10px 8px 0; border-top:1px solid var(--panel-border); }
+  .line-key-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
+  .line-key-row svg { width:28px; height:8px; flex:0 0 28px; }
+
+  .country { transition: filter .15s ease, opacity .15s ease; cursor:pointer; }
+  .country.faded { opacity:0.25; }
+  .country.hovered { filter: brightness(1.18); }
+  .country.selected { stroke:#ffffff; stroke-width:1.6px; }
+
+  .route { transition: opacity .15s ease, stroke-width .15s ease; cursor:pointer; }
+  .route.faded { opacity:0.08 !important; }
+  .route.hovered { stroke-width:3.4 !important; }
+
+  .glow { pointer-events:none; }
+  .chokepoint { cursor:pointer; }
+  .chokepoint:hover { filter: brightness(1.4); }
+
+  .label-text { pointer-events:none; }
+
+  #tooltip {
+    position:fixed; z-index:50; pointer-events:none; max-width:300px;
+    background:var(--panel); border:1px solid var(--panel-border); border-radius:8px;
+    padding:10px 12px; font-size:12.5px; line-height:1.45; color:var(--fg);
+    box-shadow:0 6px 24px rgba(0,0,0,0.18); opacity:0; transform:translateY(4px);
+    transition:opacity .12s ease, transform .12s ease;
+  }
+  #tooltip.show { opacity:1; transform:translateY(0); }
+  #tooltip .tt-title { font-weight:600; margin-bottom:3px; display:flex; align-items:center; gap:6px; }
+  #tooltip .tt-dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 9px; }
+  #tooltip .tt-body { color:var(--sub); }
+  #tooltip .tt-body b { color:var(--fg); }
+
+  footer { margin-top:18px; font-size:11.5px; color:var(--sub); max-width:760px; }
+</style>
+</head>
+<body>
+<h1>OIL MAP</h1>
+<div class="type-toggle" id="typeToggle">
+  <button class="type-btn active" data-type="crude">CRUDE</button>
+  <button class="type-btn" data-type="refined">REFINED</button>
+</div>
+
+<!-- CRUDE view — rendered only by the CRUDE script below -->
+<div class="view" id="crudeView">
+  <div class="wrap">
+    <div class="map-col"><div class="map" id="crudeMap"></div></div>
+    <div class="legend" id="crudeLegend"></div>
+  </div>
+</div>
+
+<!-- REFINED view — rendered only by the REFINED script below -->
+<div class="view" id="refinedView" hidden>
+  <div class="wrap">
+    <div class="map-col"><div class="map" id="refinedMap"></div></div>
+    <div class="legend" id="refinedLegend"></div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<footer>Data as of ~Sept 2026, see <code>crude.xlsx</code> and <code>refined.xlsx</code> for full sourcing, percentages, and routing notes behind every figure shown here.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+/* ============================================================
+   CRUDE / REFINED TOGGLE — the only code shared by both views.
+   It just shows one view and hides the other; each view's data and
+   rendering live in their own independent script block below.
+   ============================================================ */
+d3.selectAll('.type-btn').on('click', function(){
+  const type = this.dataset.type;
+  d3.selectAll('.type-btn').classed('active', false);
+  d3.select(this).classed('active', true);
+  d3.select('#crudeView').attr('hidden', type === 'crude' ? null : true);
+  d3.select('#refinedView').attr('hidden', type === 'refined' ? null : true);
+  d3.select('#tooltip').classed('show', false);
+});
+</script>
+
+<script>
+/* ############################################################
+   CRUDE — self-contained: own data, own rendering, own state.
+   Wrapped in an IIFE so nothing leaks into / collides with REFINED.
+   ############################################################ */
+(function(){
+/* ============================================================
+   DATA — see crude.xlsx for full citations and notes.
+   Coordinates are [longitude, latitude] approximations for the
+   producing region / receiving hub, not exact port locations.
+   ============================================================ */
+
+const groups = [
+  { key:'me',  name:'Middle East (Iran, Saudi Arabia, Iraq)', color:'#3fa34d', stroke:'#245e2c', desc:'Medium-heavy, sulfuric (sour) crude.' },
+  { key:'usa', name:'USA', color:'#eda100', stroke:'#8a5f00', desc:'Light crude, golden color, thin and flows easily.', benchmark:'WTI' },
+  { key:'can', name:'Canada', color:'#eda100', stroke:'#8a5f00', hatch:true, desc:'Light-medium; linked to but distinct from the US system.' },
+  { key:'ven', name:'Venezuela', color:'#2a78d6', stroke:'#0c447c', desc:'Extra-heavy crude, very dark, extremely thick.' },
+  { key:'latam', name:'Latin America (Brazil, Mexico)', color:'#2a78d6', stroke:'#0c447c', hatch:true, desc:'Grouped by region, not crude type: Brazil’s pre-salt is medium and sweet, Mexico’s Maya is heavy and sour.' },
+  { key:'rus', name:'Russia', color:'#e34948', stroke:'#8a1f1e', desc:'Medium crude, dark brown, moderate thickness.' },
+  { key:'kaz', name:'Kazakhstan', color:'#e34948', stroke:'#8a1f1e', hatch:true, desc:'CPC pipeline into Russia’s Black Sea export system; linked to but distinct from Russia’s own crude.' },
+  { key:'nk', name:'North Korea', color:'#e34948', stroke:'#8a1f1e', hatch:true, desc:'Within Russia’s sphere of influence; sanctioned, imports only small capped volumes.' },
+  { key:'afr', name:'Africa (Nigeria, Libya, Algeria, Angola)', color:'#eb6834', stroke:'#993c1d', desc:'Light, sweet and waxy.' },
+  { key:'eu',  name:'North Sea (Norway, UK)', color:'#e87ba4', stroke:'#993556', desc:'Light, sweet.', benchmark:'Brent' }
+];
+const groupByKey = Object.fromEntries(groups.map(g=>[g.key,g]));
+
+/* exports: full destination breakdown of THIS country's crude exports —
+   always sums to 100%.
+   imports: full source breakdown of THIS country's own crude imports —
+   always sums to 100%, or a single {from:'None', pct:0} row for net
+   exporters with no meaningfully tracked crude imports.
+   Full sourcing + notes for every figure: crude.xlsx, sheet
+   "Export-Import % (map data)". Some shares are hard-sourced (EU import
+   stats, Canada's CER breakdown, Iran/Statista); the rest are this
+   project's estimates to complete a full 100% picture per country. */
+const countryInfo = {
+  'Iran': { group:'me', note:'Ships via the Strait of Hormuz.',
+    exports:[{to:'China',pct:91},{to:'Other Asia / undisclosed',pct:9}],
+    imports:[{from:'None',pct:0}] },
+  'Saudi Arabia': { group:'me', note:'Routed to the EU via the Suez Canal.',
+    exports:[{to:'China',pct:25},{to:'EU',pct:15},{to:'Japan',pct:13},{to:'India',pct:12},{to:'South Korea',pct:10},{to:'USA',pct:5},{to:'Other Asia',pct:20}],
+    imports:[{from:'None',pct:0}] },
+  'Iraq': { group:'me', note:'Basrah crude, medium-heavy/sour. Routed via Suez.',
+    exports:[{to:'China',pct:35},{to:'EU',pct:20},{to:'India',pct:15},{to:'USA',pct:5},{to:'Other Asia',pct:25}],
+    imports:[{from:'None',pct:0}] },
+  'United States of America': { group:'usa', note:'Net crude importer — imports more crude than it exports (the reverse of refined products). Exports ship via Panama Canal / Cape of Good Hope.',
+    exports:[{to:'EU',pct:25},{to:'South Korea',pct:15},{to:'India',pct:10},{to:'UK',pct:10},{to:'China',pct:5},{to:'Other',pct:35}],
+    imports:[{from:'Canada',pct:55},{from:'Mexico',pct:12},{from:'Venezuela',pct:10},{from:'Saudi Arabia',pct:6},{from:'Brazil',pct:3},{from:'Other',pct:14}] },
+  'United States': { group:'usa', note:'Net crude importer — imports more crude than it exports (the reverse of refined products). Exports ship via Panama Canal / Cape of Good Hope.',
+    exports:[{to:'EU',pct:25},{to:'South Korea',pct:15},{to:'India',pct:10},{to:'UK',pct:10},{to:'China',pct:5},{to:'Other',pct:35}],
+    imports:[{from:'Canada',pct:55},{from:'Mexico',pct:12},{from:'Venezuela',pct:10},{from:'Saudi Arabia',pct:6},{from:'Brazil',pct:3},{from:'Other',pct:14}] },
+  'Canada': { group:'can', note:'Imports feed Eastern refineries not linked to Western Canadian pipelines.',
+    exports:[{to:'USA',pct:90},{to:'Other (Pacific)',pct:10}],
+    imports:[{from:'USA',pct:75.6},{from:'Saudi Arabia',pct:11.2},{from:'Nigeria',pct:10.9},{from:'Other',pct:2.3}] },
+  'Venezuela': { group:'ven', note:'US refiners reclaiming volumes since the Jan 2026 Maduro capture.',
+    exports:[{to:'USA',pct:60},{to:'India',pct:15},{to:'China',pct:10},{to:'Spain',pct:10},{to:'Cuba',pct:4},{to:'Other',pct:1}],
+    imports:[{from:'None',pct:0}] },
+  'Russia': { group:'rus', note:'Main outlets now India, China and Turkey.',
+    exports:[{to:'India',pct:50},{to:'China',pct:25},{to:'Turkey',pct:20},{to:'EU',pct:0.8},{to:'Other',pct:4.2}],
+    imports:[{from:'None',pct:0}] },
+  'Nigeria': { group:'afr', note:'Bonny Light, Qua Iboe. Direct to EU, no major chokepoint.',
+    exports:[{to:'EU',pct:40},{to:'India',pct:20},{to:'USA',pct:15},{to:'Other Asia',pct:25}],
+    imports:[{from:'None',pct:0}] },
+  'Libya': { group:'afr', note:'Es Sider, Sharara — light & sweet.',
+    exports:[{to:'EU',pct:70},{to:'Other Asia',pct:20},{to:'Other',pct:10}],
+    imports:[{from:'None',pct:0}] },
+  'Algeria': { group:'afr', note:'Saharan Blend — long-established EU supplier.',
+    exports:[{to:'EU',pct:75},{to:'Other',pct:25}],
+    imports:[{from:'None',pct:0}] },
+  'Angola': { group:'afr', note:'Historically China’s top African supplier.',
+    exports:[{to:'China',pct:45},{to:'EU',pct:30},{to:'India',pct:15},{to:'Other',pct:10}],
+    imports:[{from:'None',pct:0}] },
+  'Norway': { group:'eu', note:'Short North Sea hop, no chokepoint.',
+    exports:[{to:'EU',pct:80},{to:'UK',pct:15},{to:'Other',pct:5}],
+    imports:[{from:'None',pct:0}] },
+  'Kazakhstan': { group:'kaz', note:'CPC pipeline to Novorossiysk, then Black Sea tanker.',
+    exports:[{to:'EU',pct:65},{to:'China',pct:20},{to:'Other',pct:15}],
+    imports:[{from:'None',pct:0}] },
+  'Brazil': { group:'latam', note:'Offshore pre-salt fields (Santos basin). China is the primary buyer.',
+    exports:[{to:'China',pct:45},{to:'EU',pct:18},{to:'USA',pct:12},{to:'India',pct:6},{to:'Other Asia',pct:10},{to:'Other',pct:9}],
+    imports:[{from:'USA',pct:40},{from:'Saudi Arabia',pct:20},{from:'Nigeria',pct:15},{from:'Other',pct:25}] },
+  'Mexico': { group:'latam', note:'Maya heavy-sour crude from the Bay of Campeche. The US is the dominant buyer.',
+    exports:[{to:'USA',pct:60},{to:'EU',pct:15},{to:'India',pct:10},{to:'South Korea',pct:6},{to:'Cuba',pct:3},{to:'Other',pct:6}],
+    imports:[{from:'None',pct:0}] },
+
+  /* Import-only countries: not part of a colored crude-family group
+     (group:null → rendered in the neutral land color), but still
+     hoverable for their import breakdown. All estimated — see
+     crude.xlsx "Export-Import % (map data)" sheet. */
+  'China': { group:null, note:'World’s largest crude importer.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Russia',pct:20},{from:'Saudi Arabia',pct:15},{from:'Iraq',pct:12},{from:'Iran',pct:10},{from:'Angola',pct:8},{from:'Kazakhstan',pct:5},{from:'Venezuela',pct:3},{from:'Brazil',pct:6},{from:'Other',pct:21}] },
+  'India': { group:null, note:'Became a major buyer of discounted Russian crude.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Russia',pct:35},{from:'Iraq',pct:20},{from:'Saudi Arabia',pct:15},{from:'USA',pct:8},{from:'Nigeria',pct:6},{from:'Venezuela',pct:4},{from:'Other',pct:12}] },
+  'South Korea': { group:null, note:'Major Asian refining hub.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Saudi Arabia',pct:30},{from:'USA',pct:15},{from:'Iraq',pct:10},{from:'Other',pct:45}] },
+  'Turkey': { group:null, note:'Key seaborne outlet for Russian barrels since 2022.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Russia',pct:45},{from:'Iraq',pct:20},{from:'Saudi Arabia',pct:10},{from:'Iran',pct:5},{from:'Other',pct:20}] },
+  'Japan': { group:null, note:'Heavily dependent on Middle East crude.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Saudi Arabia',pct:35},{from:'USA',pct:10},{from:'Other',pct:55}] },
+  'United Kingdom': { group:'eu', note:'Shares the North Sea (Brent) fields with Norway. Exports most of its own crude and imports a similar amount for its refineries.',
+    exports:[{to:'EU',pct:60},{to:'China',pct:15},{to:'USA',pct:10},{to:'South Korea',pct:5},{to:'Other',pct:10}],
+    imports:[{from:'Norway',pct:30},{from:'USA',pct:20},{from:'Other',pct:50}] },
+  'North Korea': { group:'nk', note:'Under UN sanctions that cap its oil imports. Most crude still arrives via China’s Dandong pipeline; Russian shipments have grown since 2024.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'China',pct:65},{from:'Russia',pct:30},{from:'Other',pct:5}] },
+  'Cuba': { group:null, note:'Remains heavily dependent on Venezuelan oil supplies and subsidized shipments for its energy and power generation needs.',
+    exports:[{to:'None',pct:0}],
+    imports:[{from:'Venezuela',pct:55},{from:'Mexico',pct:25},{from:'Russia',pct:15},{from:'Other',pct:5}] }
+};
+
+/* The EU is drawn as a single hub point (not a real country polygon), so
+   it gets its own hoverable marker instead of a countryInfo entry. These
+   shares ARE hard-sourced (Eurostat, Q1 2026) except "Other suppliers",
+   which is the remainder needed to reach 100%. */
+const euHub = {
+  name: 'EU (27)', c: [15,48],
+  note: 'Q1 2026 share of total EU petroleum-oil imports (Eurostat).',
+  imports: [
+    {from:'USA',pct:17.8},{from:'Norway',pct:16.6},{from:'Kazakhstan',pct:9.6},
+    {from:'Libya',pct:9},{from:'Saudi Arabia',pct:6.8},{from:'Nigeria',pct:5.8},
+    {from:'Iraq',pct:5.8},{from:'Russia',pct:0.8},
+    {from:'Other suppliers',pct:27.8}
+  ]
+};
+
+/* Every EU-27 member state (as named in the topology) hovers as one
+   unified "EU" tooltip using euHub's data above, instead of 27 separate
+   fragmented entries. Norway and the UK are EU suppliers but NOT EU
+   members, so they keep their own North Sea/Brent entries and are not
+   in this list. A couple of alternate spellings are included for
+   countries whose topology name has varied across Natural Earth
+   releases (e.g. Czechia). */
+const euMemberCountries = new Set([
+  'Austria','Belgium','Bulgaria','Croatia','Cyprus','Czechia','Czech Republic','Czech Rep.',
+  'Denmark','Estonia','Finland','France','Germany','Greece','Hungary','Ireland','Italy',
+  'Latvia','Lithuania','Luxembourg','Malta','Netherlands','Poland','Portugal','Romania',
+  'Slovakia','Slovenia','Spain','Sweden'
+]);
+
+const chokepoints = [
+  {name:'Strait of Hormuz', c:[56.25,26.6], detail:'Used by Iran→China and Saudi Arabia/Iraq→EU flows.'},
+  {name:'Suez Canal', c:[32.3,30.5], dy:14, detail:'Used by Saudi Arabia and Iraq exports headed to the EU.'},
+  {name:'Panama Canal', c:[-79.5,9.0], detail:'USA→Asia route for Suezmax cargoes (VLCCs don’t fit the locks). Traffic hit a 4-year high in Apr 2026.'},
+  {name:'Cape of Good Hope', c:[18,-34], detail:'USA→Asia route for full VLCCs (up to 2M bbl) too large for Panama or a loaded Suez transit.'}
+];
+
+const originLabels = [
+  {name:'Iran (exports)', c:[53,32], dy:-12, dx:14},
+  {name:'Saudi Arabia (exports)', c:[45,24], dy:14},
+  {name:'Iraq (exports)', c:[44,33], dy:-14, dx:-30},
+  {name:'USA (imports/exports)', c:[-102,31], dy:-8},
+  {name:'Canada', c:[-97,55], dy:-8},
+  {name:'Venezuela (exports)', c:[-66,8], dy:14},
+  {name:'Russia (exports)', c:[75,62], dy:-8},
+  {name:'Nigeria (exports)', c:[8,9], dy:14},
+  {name:'Libya (exports)', c:[17,27], dy:14},
+  {name:'Algeria (exports)', c:[3,28], dy:-8},
+  {name:'Angola (exports)', c:[17,-12], dy:14},
+  {name:'Norway (exports)', c:[10,61], dy:-8},
+  {name:'Kazakhstan', c:[68,48], dy:14},
+  {name:'Brazil (exports)', c:[-40,-22], dy:14},
+  {name:'Mexico (exports)', c:[-92,19], dy:4, dx:-104}
+];
+
+const destLabels = [
+  {name:'China (imports)', c:[108,34], dy:14},
+  {name:'EU (imports)', c:[15,48], dy:-10},
+  {name:'South Korea (imports)', c:[128,36.5], dy:14},
+  {name:'India (imports)', c:[78,21], dy:14},
+  {name:'Cuba (imports)', c:[-79,22], dy:14, dx:10},
+  {name:'Turkey (imports)', c:[29,39.5], dy:-7, dx:-24},
+  {name:'Japan (imports)', c:[139,37], dy:-10, dx:6},
+  {name:'UK (imports/exports)', c:[-2,53.5], dy:4, dx:-128}
+];
+
+/* Each route: pts = ordered [lon,lat] waypoints from exporter to importer.
+   group = origin group key. dash = true for pipeline/overland or
+   "long way" routes. bend = curvature control, tuned per route to avoid
+   overlaps. label = short human description used in the hover tooltip.
+   from / to = country names (topology names, or 'EU') the arrow connects —
+   used by click-a-country isolation. */
+const routes = [
+  {pts:[[53,32],[56.25,26.6],[108,34]], group:'me', dash:false, bend:20, from:["Iran"], to:["China"], label:'Iran → China', detail:'~91% of Iran’s exports. Via the Strait of Hormuz.'},
+  {pts:[[45,24],[32.3,30.5],[15,48]], group:'me', dash:false, bend:12, from:["Saudi Arabia"], to:["EU"], label:'Saudi Arabia → EU', detail:'Via the Suez Canal.'},
+  {pts:[[44,33],[32.3,30.5],[15,48]], group:'me', dash:false, bend:16, from:["Iraq"], to:["EU"], label:'Iraq → EU', detail:'Basrah crude, via the Suez Canal.'},
+  {pts:[[-102,31],[15,48]], group:'usa', dash:false, bend:-30, from:["United States of America"], to:["EU"], label:'USA → EU (Netherlands)', detail:'One of the USA’s top export destinations.'},
+  {pts:[[-102,31],[-2,53]], group:'usa', dash:false, bend:-40, from:["United States of America"], to:["United Kingdom"], label:'USA → UK', detail:'~10% of US crude exports; the US supplies ~20% of the UK’s crude imports (second only to Norway).'},
+  {pts:[[-102,31],[-79.5,9],[-178,32]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["South Korea","Japan","China"], label:'USA → Asia (Panama Canal)', detail:'Suezmax cargoes; ~1 month transit. Traffic hit a 4-yr high Apr 2026.'},
+  {pts:[[178,32],[128,36.5]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["South Korea"], label:'USA → South Korea', detail:'Continuation of the Panama Canal route.'},
+  {pts:[[-102,31],[-20,15],[18,-34],[80,-12],[128,36.5]], group:'usa', dash:true, bend:10, from:["United States of America"], to:["South Korea"], label:'USA → Asia (Cape of Good Hope)', detail:'Full VLCCs up to 2M bbl, too large for Panama/Suez when loaded. ~2 month transit.'},
+  {pts:[[-97,55],[-102,31]], group:'usa', dash:false, bend:0, from:["Canada"], to:["United States of America"], label:'Canada → USA', detail:'~90% of Canadian crude exports go to the US.'},
+  {pts:[[-66,8],[-102,31]], group:'ven', dash:false, bend:-25, from:["Venezuela"], to:["United States of America"], label:'Venezuela → USA', detail:'US refiners reclaiming volumes since the Jan 2026 Maduro capture.'},
+  {pts:[[-66,8],[-79,22]], group:'ven', dash:false, bend:-8, from:["Venezuela"], to:["Cuba"], label:'Venezuela → Cuba', detail:'Subsidized shipments Cuba relies on for power generation — ~55% of Cuba’s crude imports.'},
+  {pts:[[-40,-22],[18,-34],[80,-12],[108,34]], group:'latam', dash:false, bend:10, from:["Brazil"], to:["China"], label:'Brazil → China', detail:'~45% of Brazil’s exports — China is the primary destination. VLCCs via the Cape of Good Hope.'},
+  {pts:[[-92,19],[-102,31]], group:'latam', dash:false, bend:-8, from:["Mexico"], to:["United States of America"], label:'Mexico → USA', detail:'~60% of Mexico’s exports — the US is the dominant buyer of Maya crude.'},
+  {pts:[[-66,8],[108,34]], group:'ven', dash:true, bend:-60, from:["Venezuela"], to:["China"], label:'Venezuela → China', detail:'Dark-fleet route; ~550k bbl/d in 2025, collapsed to ~0 after the Dec 2025 US naval blockade.'},
+  {pts:[[75,62],[108,34]], group:'rus', dash:true, bend:10, from:["Russia"], to:["China"], label:'Russia → China', detail:'ESPO pipeline, overland — no maritime chokepoint needed.'},
+  {pts:[[132,43.5],[127,40]], group:'rus', dash:true, bend:6, from:["Russia"], to:["North Korea"], label:'Russia → North Korea', detail:'Small, sanctions-busting shipments from Russia’s Far East ports and by rail — ~30% of North Korea’s crude imports.'},
+  {pts:[[75,62],[78,21]], group:'rus', dash:false, bend:10, from:["Russia"], to:["India"], label:'Russia → India', detail:'Seaborne Urals shipments.'},
+  {pts:[[8,9],[15,48]], group:'afr', dash:false, bend:-18, from:["Nigeria"], to:["EU"], label:'Nigeria → EU', detail:'Bonny Light, Qua Iboe. Direct, no major chokepoint.'},
+  {pts:[[17,27],[15,48]], group:'afr', dash:false, bend:-14, from:["Libya"], to:["EU"], label:'Libya → EU', detail:'Es Sider, Sharara. ~9% of EU petroleum-oil imports.'},
+  {pts:[[3,28],[15,48]], group:'afr', dash:false, bend:-10, from:["Algeria"], to:["EU"], label:'Algeria → EU', detail:'Saharan Blend, long-established EU supplier.'},
+  {pts:[[17,-12],[15,48]], group:'afr', dash:false, bend:-22, from:["Angola"], to:["EU"], label:'Angola → EU', detail:'$5.5B of Angolan crude imported by the EU in 2024 alone.'},
+  {pts:[[1,57.5],[15,48]], group:'eu', dash:false, bend:6, from:["United Kingdom"], to:["EU"], label:'UK → EU', detail:'North Sea (Brent) crude, mainly to the Netherlands and Germany — ~60% of UK crude exports.'},
+  {pts:[[1,57.5],[-12,40],[-18,10],[18,-34],[80,-12],[108,34]], group:'eu', dash:true, bend:6, from:["United Kingdom"], to:["China"], label:'UK → China (Cape of Good Hope)', detail:'~15% of UK crude exports. North Sea VLCC cargoes go the long way round Africa rather than through Suez / the Red Sea.'},
+  {pts:[[10,61],[15,48]], group:'eu', dash:false, bend:-8, from:["Norway"], to:["EU"], label:'Norway → EU', detail:'Short North Sea hop. 16.6% of EU petroleum-oil imports (Q1 2026).'},
+  {pts:[[68,48],[15,48]], group:'kaz', dash:true, bend:14, from:["Kazakhstan"], to:["EU"], label:'Kazakhstan → EU', detail:'CPC pipeline to Novorossiysk, then Black Sea tanker. 9.6% of EU petroleum-oil imports (Q1 2026).'},
+  // ---- import connections: every flow in the data between two mapped countries.
+  //      minor:true = hidden on the overview, shown when one of its countries
+  //      (or its oil type) is selected. ----
+  {pts:[[17, -12], [19, -35], [80, -12], [108, 34]], group:'afr', dash:false, bend:8, from:["Angola"], to:["China"], label:'Angola → China', detail:"~45% of Angola’s crude exports; ~8% of China’s crude imports. Round the Cape of Good Hope."},
+  {pts:[[17, -12], [19, -35], [78, 21]], group:'afr', dash:false, bend:8, minor:true, from:["Angola"], to:["India"], label:'Angola → India', detail:"~15% of Angola’s crude exports. Round the Cape of Good Hope."},
+  {pts:[[-40, -22], [15, 48]], group:'latam', dash:false, bend:-14, minor:true, from:["Brazil"], to:["EU"], label:'Brazil → EU', detail:"~18% of Brazil’s crude exports. Across the Atlantic."},
+  {pts:[[-40, -22], [19, -35], [78, 21]], group:'latam', dash:false, bend:8, minor:true, from:["Brazil"], to:["India"], label:'Brazil → India', detail:"~6% of Brazil’s crude exports. Round the Cape of Good Hope."},
+  {pts:[[-40, -22], [-33, -6], [-62, 14], [-102, 31]], group:'latam', dash:false, bend:-6, minor:true, from:["Brazil"], to:["United States of America"], label:'Brazil → USA', detail:"~12% of Brazil’s crude exports; ~3% of USA’s crude imports. Up the Atlantic coast into the US Gulf."},
+  {pts:[[121, 41], [127, 40]], group:null, dash:true, bend:4, from:["China"], to:["North Korea"], label:'China → North Korea', detail:"~65% of North Korea’s crude imports. Dandong–Sinuiju pipeline — North Korea’s main crude supply line."},
+  {pts:[[53, 32], [33, 39.5]], group:'me', dash:false, bend:6, minor:true, from:["Iran"], to:["Turkey"], label:'Iran → Turkey', detail:"~5% of Turkey’s crude imports. Overland / short-haul."},
+  {pts:[[44, 33], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:24, from:["Iraq"], to:["China"], label:'Iraq → China', detail:"~35% of Iraq’s crude exports; ~12% of China’s crude imports. Basrah crude via the Strait of Hormuz."},
+  {pts:[[44, 33], [56.25, 26.6], [78, 21]], group:'me', dash:false, bend:10, minor:true, from:["Iraq"], to:["India"], label:'Iraq → India', detail:"~15% of Iraq’s crude exports; ~20% of India’s crude imports. Basrah crude via the Strait of Hormuz."},
+  {pts:[[44, 33], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:10, minor:true, from:["Iraq"], to:["South Korea"], label:'Iraq → South Korea', detail:"~10% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[44, 33], [33, 39.5]], group:'me', dash:true, bend:6, minor:true, from:["Iraq"], to:["Turkey"], label:'Iraq → Turkey', detail:"~20% of Turkey’s crude imports. Kirkuk–Ceyhan pipeline."},
+  {pts:[[44, 33], [56.25, 26.6], [50, 12], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:6, minor:true, from:["Iraq"], to:["United States of America"], label:'Iraq → USA', detail:"~5% of Iraq’s crude exports. Via Hormuz, the Red Sea, Suez and the Atlantic."},
+  {pts:[[68, 48], [108, 34]], group:'kaz', dash:true, bend:12, from:["Kazakhstan"], to:["China"], label:'Kazakhstan → China', detail:"~20% of Kazakhstan’s crude exports; ~5% of China’s crude imports. Kazakhstan–China pipeline, overland."},
+  {pts:[[-92, 19], [-79, 22]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["Cuba"], label:'Mexico → Cuba', detail:"~3% of Mexico’s crude exports; ~25% of Cuba’s crude imports. Short Gulf of Mexico hop; subsidized shipments."},
+  {pts:[[-92, 19], [-83, 24], [15, 48]], group:'latam', dash:false, bend:-10, minor:true, from:["Mexico"], to:["EU"], label:'Mexico → EU', detail:"~15% of Mexico’s crude exports. Through the Florida Straits and across the Atlantic."},
+  {pts:[[-92, 19], [-83, 24], [-30, 5], [19, -35], [78, 21]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["India"], label:'Mexico → India', detail:"~10% of Mexico’s crude exports. Across the Atlantic and round the Cape of Good Hope."},
+  {pts:[[-92, 19], [-79.5, 9], [-178, 32]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["South Korea"], label:'Mexico → South Korea', detail:"~6% of Mexico’s crude exports. Via the Panama Canal and across the Pacific."},
+  {pts:[[8, 9], [-43, -23]], group:'afr', dash:false, bend:8, minor:true, from:["Nigeria"], to:["Brazil"], label:'Nigeria → Brazil', detail:"~15% of Brazil’s crude imports. Across the South Atlantic."},
+  {pts:[[8, 9], [-72, 46]], group:'afr', dash:false, bend:-12, minor:true, from:["Nigeria"], to:["Canada"], label:'Nigeria → Canada', detail:"~10.9% of Canada’s crude imports. Across the Atlantic to Eastern Canadian refineries."},
+  {pts:[[8, 9], [5, -5], [19, -35], [78, 21]], group:'afr', dash:false, bend:8, from:["Nigeria"], to:["India"], label:'Nigeria → India', detail:"~20% of Nigeria’s crude exports; ~6% of India’s crude imports. Round the Cape of Good Hope."},
+  {pts:[[8, 9], [-102, 31]], group:'afr', dash:false, bend:-10, minor:true, from:["Nigeria"], to:["United States of America"], label:'Nigeria → USA', detail:"~15% of Nigeria’s crude exports. Across the Atlantic."},
+  {pts:[[10, 61], [-2, 53]], group:'eu', dash:false, bend:6, from:["Norway"], to:["United Kingdom"], label:'Norway → UK', detail:"~15% of Norway’s crude exports; ~30% of UK’s crude imports. Short North Sea hop."},
+  {pts:[[29, 60], [-79, 22]], group:'rus', dash:false, bend:-16, minor:true, from:["Russia"], to:["Cuba"], label:'Russia → Cuba', detail:"~15% of Cuba’s crude imports. From the Baltic across the Atlantic."},
+  {pts:[[45, 54], [15, 48]], group:'rus', dash:true, bend:-6, minor:true, from:["Russia"], to:["EU"], label:'Russia → EU', detail:"~0.8% of Russia’s crude exports; ~0.8% of EU’s crude imports. Druzhba pipeline to Hungary / Slovakia — the last direct Russian crude into the EU."},
+  {pts:[[37.8, 44.7], [33, 39.5]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Turkey"], label:'Russia → Turkey', detail:"~20% of Russia’s crude exports; ~45% of Turkey’s crude imports. Across the Black Sea from Novorossiysk."},
+  {pts:[[45, 24], [52, 12], [19, -35], [-43, -23]], group:'me', dash:false, bend:8, minor:true, from:["Saudi Arabia"], to:["Brazil"], label:'Saudi Arabia → Brazil', detail:"~20% of Brazil’s crude imports. Round the Cape of Good Hope."},
+  {pts:[[45, 24], [32.3, 30.5], [-6, 36], [-72, 46]], group:'me', dash:false, bend:-8, minor:true, from:["Saudi Arabia"], to:["Canada"], label:'Saudi Arabia → Canada', detail:"~11.2% of Canada’s crude imports. Via Suez and across the Atlantic."},
+  {pts:[[45, 24], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:16, from:["Saudi Arabia"], to:["China"], label:'Saudi Arabia → China', detail:"~25% of Saudi Arabia’s crude exports; ~15% of China’s crude imports. Via the Strait of Hormuz."},
+  {pts:[[45, 24], [56.25, 26.6], [78, 21]], group:'me', dash:false, bend:6, minor:true, from:["Saudi Arabia"], to:["India"], label:'Saudi Arabia → India', detail:"~12% of Saudi Arabia’s crude exports; ~15% of India’s crude imports. Via the Strait of Hormuz."},
+  {pts:[[45, 24], [56.25, 26.6], [98, 5], [139, 36]], group:'me', dash:false, bend:12, from:["Saudi Arabia"], to:["Japan"], label:'Saudi Arabia → Japan', detail:"~13% of Saudi Arabia’s crude exports; ~35% of Japan’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[45, 24], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:6, from:["Saudi Arabia"], to:["South Korea"], label:'Saudi Arabia → South Korea', detail:"~10% of Saudi Arabia’s crude exports; ~30% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[45, 24], [32.3, 30.5], [33, 39.5]], group:'me', dash:false, bend:6, minor:true, from:["Saudi Arabia"], to:["Turkey"], label:'Saudi Arabia → Turkey', detail:"~10% of Turkey’s crude imports. Via the Red Sea and Suez."},
+  {pts:[[45, 24], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:-6, minor:true, from:["Saudi Arabia"], to:["United States of America"], label:'Saudi Arabia → USA', detail:"~5% of Saudi Arabia’s crude exports; ~6% of USA’s crude imports. Via Suez and across the Atlantic."},
+  {pts:[[1, 57.5], [-12, 40], [-18, 10], [19, -35], [80, -12], [128, 36.5]], group:'eu', dash:true, bend:6, minor:true, from:["United Kingdom"], to:["South Korea"], label:'UK → South Korea', detail:"~5% of UK’s crude exports. The long way round the Cape of Good Hope."},
+  {pts:[[1, 57.5], [-102, 31]], group:'eu', dash:false, bend:-18, minor:true, from:["United Kingdom"], to:["United States of America"], label:'UK → USA', detail:"~10% of UK’s crude exports. Across the Atlantic."},
+  {pts:[[-102, 31], [-62, 14], [-33, -6], [-43, -23]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["Brazil"], label:'USA → Brazil', detail:"~40% of Brazil’s crude imports. Down the Atlantic coast."},
+  {pts:[[-102, 31], [-75, 32], [-72, 46]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Canada"], label:'USA → Canada', detail:"~75.6% of Canada’s crude imports. Up the East Coast to Eastern Canadian refineries."},
+  {pts:[[-102, 31], [-20, 15], [19, -35], [78, 21]], group:'usa', dash:true, bend:8, minor:true, from:["United States of America"], to:["India"], label:'USA → India', detail:"~10% of USA’s crude exports; ~8% of India’s crude imports. The long way round the Cape of Good Hope."},
+  {pts:[[-66, 8], [15, 48]], group:'ven', dash:false, bend:-16, minor:true, from:["Venezuela"], to:["EU"], label:'Venezuela → EU', detail:"~10% of Venezuela’s crude exports. Across the Atlantic, mainly to Spain."},
+  {pts:[[-66, 8], [-20, 0], [19, -35], [78, 21]], group:'ven', dash:false, bend:8, minor:true, from:["Venezuela"], to:["India"], label:'Venezuela → India', detail:"~15% of Venezuela’s crude exports; ~4% of India’s crude imports. Across the Atlantic and round the Cape of Good Hope."},
+  {pts:[[178,32],[128,36.5]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["South Korea"], label:'Mexico → South Korea', detail:'Continuation of the Panama Canal route.'},
+  {pts:[[178,32],[139,36]], group:'usa', dash:false, bend:6, minor:true, from:["United States of America"], to:["Japan"], label:'USA → Japan', detail:'~10% of Japan’s crude imports. Continuation of the Panama Canal route.'},
+  {pts:[[178,32],[108,34]], group:'usa', dash:false, bend:10, minor:true, from:["United States of America"], to:["China"], label:'USA → China', detail:'~5% of USA’s crude exports. Continuation of the Panama Canal route.'},
+];
+
+const destGlow = [
+  {c:[108,34], group:'me'},{c:[108,34], group:'rus'},{c:[108,34], group:'ven'},
+  {c:[15,48], group:'usa'},{c:[128,36.5], group:'usa'},
+  {c:[-102,31], group:'ven'},{c:[78,21], group:'rus'},
+  {c:[15,48], group:'me'},{c:[15,48], group:'afr'},{c:[15,48], group:'eu'},{c:[15,48], group:'kaz'},
+  {c:[-79,22], group:'ven'},{c:[108,34], group:'latam'},{c:[108,34], group:'eu'},{c:[-2,53], group:'usa'},{c:[-102,31], group:'latam'}
+];
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const landFill = '#262623';
+const landStroke = '#4a4944';
+// Import-only countries (group:null in countryInfo) and EU-27 members:
+// a slightly lighter gray than untracked land, so importers stand out.
+const importFill = '#43423e';
+const importStroke = '#5e5d57';
+function isImporter(n){ return euMemberCountries.has(n) || (countryInfo[n] && !countryInfo[n].group); }
+const labelFill = '#f0efec';
+
+// Zoomed in and shifted left: the empty Pacific on the far left is cropped
+// so the Middle East / Asia get more room (Hawaii and the far Arctic fall outside).
+const projection = d3.geoNaturalEarth1().scale(200).translate([420,270]);
+const path = d3.geoPath(projection);
+const svg = d3.select('#crudeMap').append('svg')
+  .attr('viewBox','0 0 960 500')
+  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; applyFocus(); }); // click the sea = reset
+
+svg.append('defs').html(
+  '<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+  '<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></marker>' +
+  '<pattern id="canadaStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+  '<rect width="6" height="6" fill="'+landFill+'"/>' +
+  '<line x1="0" y1="0" x2="0" y2="6" stroke="#eda100" stroke-width="3"/></pattern>' +
+  '<pattern id="kazakhstanStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+  '<rect width="6" height="6" fill="'+landFill+'"/>' +
+  '<line x1="0" y1="0" x2="0" y2="6" stroke="#e34948" stroke-width="3"/></pattern>' +
+  '<pattern id="latamStripes" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+  '<rect width="6" height="6" fill="'+landFill+'"/>' +
+  '<line x1="0" y1="0" x2="0" y2="6" stroke="#2a78d6" stroke-width="3"/></pattern>'
+);
+
+function pt(c){ return projection(c); }
+function routeColor(d){ return d.group ? groupByKey[d.group].color : '#a3a29c'; }
+function curvePath(points, bend){
+  const p = points.map(pt);
+  let d = 'M'+p[0][0]+','+p[0][1];
+  for (let i=1;i<p.length;i++){
+    const mx=(p[i-1][0]+p[i][0])/2, my=(p[i-1][1]+p[i][1])/2 - bend;
+    d += ' Q'+mx+','+my+' '+p[i][0]+','+p[i][1];
+  }
+  return d;
+}
+
+// ---- tooltip ----
+const tooltip = d3.select('#tooltip');
+function showTooltip(event, titleHtml, dotColor, bodyHtml){
+  tooltip.html(
+    '<div class="tt-title">' + (dotColor ? '<span class="tt-dot" style="background:'+dotColor+'"></span>' : '') + titleHtml + '</div>' +
+    '<div class="tt-body">' + bodyHtml + '</div>'
+  );
+  moveTooltip(event);
+  tooltip.classed('show', true);
+}
+function moveTooltip(event){
+  const pad = 14;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const ttNode = tooltip.node();
+  const w = ttNode.offsetWidth || 240, h = ttNode.offsetHeight || 60;
+  let x = event.clientX + pad, y = event.clientY + pad;
+  if (x + w + pad > vw) x = event.clientX - w - pad;
+  if (y + h + pad > vh) y = event.clientY - h - pad;
+  tooltip.style('left', x + 'px').style('top', y + 'px');
+}
+function hideTooltip(){ tooltip.classed('show', false); }
+
+function formatStatLine(pct, place){
+  return '<b>' + pct + '%</b> ' + place;
+}
+function formatCountryStats(info){
+  const exportsPct = info.exports.reduce((s,e)=>s+e.pct, 0);
+  const importsPct = info.imports.reduce((s,e)=>s+e.pct, 0);
+  return (
+    '<div style="margin-top:4px"><b>Export</b> (' + Math.round(exportsPct) + '%)<br>' +
+      info.exports.map(e => formatStatLine(e.pct, e.to)).join('<br>') + '</div>' +
+    '<div style="margin-top:4px"><b>Import</b> (' + Math.round(importsPct) + '%)<br>' +
+      info.imports.map(e => formatStatLine(e.pct, e.from)).join('<br>') + '</div>'
+  );
+}
+
+function showEuTooltip(event){
+  showTooltip(event, euHub.name, '#e0ded4',
+    euHub.note +
+    formatCountryStats({exports:[{to:'None',pct:0}], imports:euHub.imports}));
+}
+
+// ---- legend state (click to isolate a group) ----
+let activeGroup = null;   // null = show all
+let activeRoute = null;   // a single clicked arrow; null = none
+let activeCountry = null; // a countryInfo name or 'EU'; null = none
+
+// Which clickable "entity" a topology country belongs to (EU members → 'EU').
+function entityOf(n){ return euMemberCountries.has(n) ? 'EU' : (countryInfo[n] ? n : null); }
+// Click a country: isolate it and every arrow into / out of it. Click it
+// again (or the sea, or an untracked country) to reset.
+function selectCountry(e){
+  activeCountry = (e && activeCountry !== e) ? e : null;
+  activeGroup = null;
+  activeRoute = null;
+  applyFocus();
+}
+
+// Click an arrow: isolate it and the countries at its two ends. Click it
+// again (or the sea) to reset.
+function selectRoute(r){
+  activeRoute = (activeRoute === r) ? null : r;
+  activeCountry = null;
+  activeGroup = null;
+  applyFocus();
+}
+
+function applyFocus(){
+  if (activeRoute){
+    const ends = new Set(activeRoute.from.concat(activeRoute.to));
+    svg.selectAll('.country')
+      .classed('faded', d => !ends.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => ends.has(entityOf(d.properties && d.properties.name)));
+    svg.selectAll('.route').classed('faded', d => d !== activeRoute)
+      .style('display', d => (d.minor && d !== activeRoute) ? 'none' : null);
+    const endKey = activeRoute.pts[activeRoute.pts.length-1].join() + '|' + activeRoute.group;
+    svg.selectAll('.glow').style('opacity', d => (d.c.join() + '|' + d.group) === endKey ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
+  if (activeCountry){
+    const linked = routes.filter(r => r.from.includes(activeCountry) || r.to.includes(activeCountry));
+    const keep = new Set([activeCountry]);
+    linked.forEach(r => r.from.concat(r.to).forEach(e => keep.add(e)));
+    const ends = new Set(linked.map(r => r.pts[r.pts.length-1].join() + '|' + r.group));
+    svg.selectAll('.country')
+      .classed('faded', d => !keep.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => entityOf(d.properties && d.properties.name) === activeCountry);
+    svg.selectAll('.route').classed('faded', d => !linked.includes(d))
+      .style('display', d => (d.minor && !linked.includes(d)) ? 'none' : null);
+    svg.selectAll('.glow').style('opacity', d => ends.has(d.c.join() + '|' + d.group) ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
+  // minor routes: hidden on the overview, shown when their oil type is isolated
+  svg.selectAll('.route').style('display', d => (d.minor && d.group !== activeGroup) ? 'none' : null);
+  svg.selectAll('.country').classed('selected', false);
+  svg.selectAll('.country').classed('faded', function(d){
+    if (!activeGroup) return false;
+    const n = d.properties && d.properties.name;
+    const info = countryInfo[n];
+    return !(info && info.group === activeGroup);
+  });
+  svg.selectAll('.route').classed('faded', d => activeGroup ? d.group !== activeGroup : false);
+  svg.selectAll('.glow').classed('faded', d => activeGroup ? d.group !== activeGroup : false)
+    .style('opacity', d => (activeGroup ? (d.group === activeGroup ? 0.3 : 0) : 0.22));
+  legend.selectAll('.legend-item').classed('dimmed', function(){
+    if (!activeGroup) return false;
+    return d3.select(this).attr('data-key') !== activeGroup;
+  });
+}
+
+// ---- legend ----
+const legend = d3.select('#crudeLegend');
+const legendHeader = legend.append('div').attr('class','legend-header');
+legendHeader.append('span').attr('class','legend-title').text('OIL TYPE:');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map');
+legend.selectAll('.legend-item').data(groups).join('div')
+  .attr('class','legend-item')
+  .attr('data-key', d=>d.key)
+  .on('click', function(event, d){
+    activeCountry = null;
+    activeRoute = null;
+    activeGroup = (activeGroup === d.key) ? null : d.key;
+    applyFocus();
+  })
+  .html(d => {
+    const swatch = d.hatch
+      ? '<span class="sw" style="background:repeating-linear-gradient(45deg,'+d.color+' 0 3px,'+landFill+' 3px 6px)"></span>'
+      : '<span class="sw" style="background:'+d.color+'"></span>';
+    const benchmarkTag = d.benchmark ? '(' + d.benchmark.toUpperCase() + ') ' : '';
+    return swatch + '<span><b>' + d.name + '</b> — ' + benchmarkTag + d.desc + '</span>';
+  });
+
+// ---- line-style key (what solid vs dotted routes mean) ----
+const lineKey = legend.append('div').attr('class','line-key');
+lineKey.append('span').attr('class','legend-title').text('ROUTES:');
+lineKey.selectAll('.line-key-row').data([
+  {dash:null,  text:'<b>Solid</b> — direct tanker route'},
+  {dash:'4 3', text:'<b>Dotted</b> — pipeline / overland, the long way round, or a disrupted flow'}
+]).join('div')
+  .attr('class','line-key-row')
+  .html(d => '<svg viewBox="0 0 28 8"><line x1="1" y1="4" x2="27" y2="4" stroke="#a3a29c" stroke-width="1.7"' +
+    (d.dash ? ' stroke-dasharray="'+d.dash+'"' : '') + '/></svg><span>' + d.text + '</span>');
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
+  const countries = topojson.feature(world, world.objects.countries).features;
+
+  svg.append('g').selectAll('path').data(countries).join('path')
+    .attr('class','country')
+    .attr('d',path)
+    .attr('fill', d=>{
+      const n = d.properties && d.properties.name;
+      if (n==='Canada') return 'url(#canadaStripes)';
+      if (n==='Kazakhstan' || n==='North Korea') return 'url(#kazakhstanStripes)';
+      if (n==='Brazil' || n==='Mexico') return 'url(#latamStripes)';
+      if (isImporter(n)) return importFill;
+      const info = countryInfo[n];
+      return (info && info.group) ? groupByKey[info.group].color : landFill;
+    })
+    .attr('stroke', d=>{
+      const n = d.properties && d.properties.name;
+      if (n==='Canada') return '#8a5f00';
+      if (n==='Kazakhstan' || n==='North Korea') return '#8a1f1e';
+      if (n==='Brazil' || n==='Mexico') return '#0c447c';
+      if (isImporter(n)) return importStroke;
+      const info = countryInfo[n];
+      return (info && info.group) ? groupByKey[info.group].stroke : landStroke;
+    })
+    .attr('stroke-width',1)
+    .on('mouseenter', function(event, d){
+      const n = d.properties && d.properties.name;
+      d3.select(this).classed('hovered', true);
+      if (euMemberCountries.has(n)){
+        showEuTooltip(event);
+        return;
+      }
+      const info = countryInfo[n];
+      if (info){
+        const g = info.group ? groupByKey[info.group] : null;
+        showTooltip(event, n === 'United Kingdom' ? 'UK' : n, g ? g.color : '#888780',
+          '<b>' + (g ? g.name : 'Importer (not part of a colored group)') + '</b>' +
+          (info.note ? '<br>' + info.note : '') +
+          formatCountryStats(info));
+      } else {
+        showTooltip(event, n, null, 'Not part of the tracked crude flows on this map.');
+      }
+    })
+    .on('click', function(event, d){ event.stopPropagation(); selectCountry(entityOf(d.properties && d.properties.name)); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  svg.append('g').selectAll('circle').data(destGlow).join('circle')
+    .attr('class','glow')
+    .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1])
+    .attr('r',20).attr('fill',d=>groupByKey[d.group].color).attr('opacity',0.22).attr('stroke','none');
+
+  svg.append('g').selectAll('path').data(routes).join('path')
+    .attr('class','route')
+    .attr('d',d=>curvePath(d.pts,d.bend)).attr('fill','none')
+    .attr('stroke',routeColor).attr('stroke-width',1.7)
+    .attr('stroke-dasharray',d=>d.dash?'4 3':null).attr('opacity',0.95)
+    .style('display', d => d.minor ? 'none' : null)
+    .attr('marker-end','url(#arrow)')
+    .on('mouseenter', function(event, d){
+      d3.select(this).classed('hovered', true);
+      showTooltip(event, d.label, routeColor(d), d.detail);
+    })
+    .on('click', (event, d) => { event.stopPropagation(); selectRoute(d); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  svg.append('g').selectAll('path').data(chokepoints).join('path')
+    .attr('class','chokepoint')
+    .attr('d',d=>{const p=pt(d.c); return `M${p[0]},${p[1]-5}L${p[0]+5},${p[1]}L${p[0]},${p[1]+5}L${p[0]-5},${p[1]}Z`;})
+    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5)
+    .on('mouseenter', function(event, d){
+      showTooltip(event, d.name, '#888780', d.detail);
+    })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', hideTooltip);
+
+  svg.append('circle')
+    .attr('class','chokepoint')
+    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6)
+    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5)
+    .on('mouseenter', showEuTooltip)
+    .on('click', event => { event.stopPropagation(); selectCountry('EU'); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', hideTooltip);
+
+  function label(d){
+    const p = pt(d.c);
+    svg.append('text').attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
+      .attr('font-size',11).attr('fill',labelFill).text(d.name);
+  }
+  originLabels.forEach(label);
+  destLabels.forEach(label);
+  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+});
+})(); // end CRUDE
+</script>
+
+<script>
+/* ############################################################
+   REFINED — self-contained: own data, own rendering, own state.
+   Shares nothing with CRUDE (separate IIFE, own SVG, own legend,
+   own SVG <defs> ids prefixed "refined-"). Edit freely without
+   touching the crude view.
+   ############################################################ */
+(function(){
+/* ============================================================
+   DATA — see refined.xlsx for every figure and route.
+   Refined products are grouped by REFINING / EXPORT ROLE (big
+   national refiners, Gulf mega-refineries, trading hubs), not by
+   chemistry like crude. Coordinates are [longitude, latitude]
+   approximations of the refining/port region, not exact terminals.
+   ============================================================ */
+
+const groups = [
+  { key:'usa',  name:'USA', color:'#eda100', stroke:'#8a5f00', desc:'Gasoline & diesel from the Gulf Coast — the world’s biggest refined exporter.' },
+  { key:'ind',  name:'India', color:'#9b6dd6', stroke:'#553584', desc:'Jamnagar, the largest refining complex on Earth — diesel and jet fuel.' },
+  { key:'rus',  name:'Russia', color:'#e34948', stroke:'#8a1f1e', desc:'Diesel/gasoil, rerouted away from the EU after the 2023 product embargo.' },
+  { key:'gulf', name:'Gulf refiners (Saudi Arabia, Kuwait, UAE)', color:'#3fa34d', stroke:'#245e2c', desc:'New mega-refineries: Jazan, Al-Zour, Ruwais.' },
+  { key:'sgp',  name:'Singapore', color:'#2bb3a3', stroke:'#15665c', desc:'Asia-Pacific refining, blending and trading hub — imports to re-export.' },
+  { key:'ara',  name:'ARA hub (Netherlands, Belgium)', color:'#4cb5e8', stroke:'#1d6790', desc:'Amsterdam-Rotterdam-Antwerp: Europe’s blending and re-export hub.' },
+  { key:'kor',  name:'South Korea', color:'#eb6834', stroke:'#993c1d', desc:'Diesel, jet fuel and naphtha from SK Energy, GS Caltex, S-Oil.' },
+  { key:'chn',  name:'China', color:'#2a78d6', stroke:'#0c447c', desc:'Very large exporter when Beijing opens export quotas; mostly regional.' }
+];
+const groupByKey = Object.fromEntries(groups.map(g=>[g.key,g]));
+
+/* exports / imports: full refined-product breakdown per country, each
+   side sums to 100% (or a single 0% "None" row). Generated from
+   refined.xlsx, sheet "Export-Import % (map data)" — keep in sync by
+   hand. Directions are well-established patterns; exact percentages
+   are this project's estimates (see the sheet's Basis column).
+   group:null = importer only, drawn in the neutral land color. */
+const countryInfo = {
+  'United States of America': { group:"usa", note:"Gulf Coast refineries — the world’s biggest refined-product exporter.",
+    exports:[{to:"Mexico",pct:20},{to:"Other Latin America",pct:25},{to:"EU",pct:12},{to:"Canada",pct:8},{to:"Asia",pct:10},{to:"Other",pct:25}],
+    imports:[{from:"Canada",pct:45},{from:"ARA hub (Netherlands)",pct:12},{from:"South Korea",pct:8},{from:"India",pct:6},{from:"Other",pct:29}] },
+  'India': { group:"ind", note:"Jamnagar (Reliance) — the largest refining complex on Earth.",
+    exports:[{to:"EU",pct:25},{to:"Africa",pct:18},{to:"Singapore",pct:12},{to:"UAE",pct:10},{to:"Australia",pct:8},{to:"USA",pct:7},{to:"Other Asia",pct:20}],
+    imports:[{from:"UAE",pct:30},{from:"Saudi Arabia",pct:25},{from:"Qatar",pct:15},{from:"USA",pct:10},{from:"Other",pct:20}] },
+  'Russia': { group:"rus", note:"Diesel rerouted away from the EU after the Feb 2023 product embargo.",
+    exports:[{to:"Turkey",pct:25},{to:"Africa",pct:22},{to:"Asia (incl. UAE transshipment)",pct:20},{to:"Brazil",pct:12},{to:"Other / undisclosed",pct:21}],
+    imports:[{from:"None",pct:0}] },
+  'Saudi Arabia': { group:"gulf", note:"Jazan (Red Sea) and SATORP/YASREF mega-refineries.",
+    exports:[{to:"China",pct:18},{to:"EU",pct:15},{to:"India",pct:10},{to:"Japan",pct:10},{to:"South Korea",pct:10},{to:"East Africa",pct:12},{to:"Other Asia",pct:25}],
+    imports:[{from:"None",pct:0}] },
+  'Kuwait': { group:"gulf", note:"Al-Zour refinery, volumes largely aimed at Europe.",
+    exports:[{to:"Asia",pct:45},{to:"EU",pct:20},{to:"Africa",pct:15},{to:"Other",pct:20}],
+    imports:[{from:"None",pct:0}] },
+  'United Arab Emirates': { group:"gulf", note:"Ruwais refinery; Fujairah is a major blending/bunkering hub.",
+    exports:[{to:"Asia",pct:40},{to:"East Africa",pct:18},{to:"EU",pct:15},{to:"Other",pct:27}],
+    imports:[{from:"Russia",pct:35},{from:"India",pct:15},{from:"Other",pct:50}] },
+  'Singapore': { group:"sgp", note:"Asia-Pacific refining, blending and trading hub.",
+    exports:[{to:"Indonesia",pct:22},{to:"Australia",pct:15},{to:"Malaysia",pct:12},{to:"Vietnam",pct:10},{to:"Philippines",pct:8},{to:"China",pct:8},{to:"Other Asia",pct:25}],
+    imports:[{from:"Gulf refiners",pct:30},{from:"India",pct:15},{from:"China",pct:12},{from:"Russia",pct:10},{from:"Other",pct:33}] },
+  'Netherlands': { group:"ara", note:"Rotterdam — core of the ARA blending and re-export hub.",
+    exports:[{to:"EU",pct:45},{to:"UK",pct:15},{to:"West Africa",pct:15},{to:"USA",pct:10},{to:"Other",pct:15}],
+    imports:[{from:"India",pct:20},{from:"USA",pct:18},{from:"Gulf refiners",pct:17},{from:"UK",pct:12},{from:"Other",pct:33}] },
+  'Belgium': { group:"ara", note:"Antwerp — part of the ARA blending and re-export hub.",
+    exports:[{to:"EU",pct:55},{to:"Africa",pct:13},{to:"UK",pct:12},{to:"Other",pct:20}],
+    imports:[{from:"India",pct:18},{from:"USA",pct:15},{from:"Gulf refiners",pct:15},{from:"Other",pct:52}] },
+  'South Korea': { group:"kor", note:"SK Energy, GS Caltex, S-Oil — diesel, jet and naphtha.",
+    exports:[{to:"Australia",pct:20},{to:"Singapore",pct:15},{to:"Japan",pct:12},{to:"China",pct:12},{to:"Vietnam",pct:10},{to:"USA",pct:8},{to:"Other Asia",pct:23}],
+    imports:[{from:"Gulf refiners",pct:35},{from:"USA",pct:30},{from:"Other",pct:35}] },
+  'China': { group:"chn", note:"Exports swing with Beijing’s export quotas; mostly regional.",
+    exports:[{to:"Singapore",pct:25},{to:"Australia",pct:12},{to:"Philippines",pct:12},{to:"Vietnam",pct:10},{to:"Hong Kong",pct:10},{to:"Other Asia",pct:31}],
+    imports:[{from:"Russia",pct:30},{from:"Malaysia (transshipment)",pct:20},{from:"USA",pct:15},{from:"Gulf refiners",pct:15},{from:"Other",pct:20}] },
+  'Mexico': { group:null, note:"Overwhelmingly dependent on US gasoline and diesel.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"USA",pct:70},{from:"Other",pct:30}] },
+  'Brazil': { group:null, note:"Big diesel importer — US and, since 2022, Russia.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"USA",pct:40},{from:"Russia",pct:25},{from:"India",pct:12},{from:"Other",pct:23}] },
+  'Australia': { group:null, note:"Most domestic refineries closed; imports most of its fuel.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"South Korea",pct:30},{from:"Singapore",pct:25},{from:"Malaysia",pct:12},{from:"Japan",pct:10},{from:"India",pct:8},{from:"Other",pct:15}] },
+  'Indonesia': { group:null, note:"Large fuel importer, supplied mainly via Singapore.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"Singapore",pct:35},{from:"Malaysia",pct:15},{from:"India",pct:12},{from:"South Korea",pct:10},{from:"China",pct:8},{from:"Other",pct:20}] },
+  'Nigeria': { group:null, note:"Dangote refinery is turning a gasoline importer into a regional exporter.",
+    exports:[{to:"West Africa",pct:40},{to:"EU",pct:30},{to:"USA",pct:15},{to:"Other",pct:15}],
+    imports:[{from:"ARA hub (Netherlands)",pct:35},{from:"Russia",pct:15},{from:"India",pct:10},{from:"Other",pct:40}] },
+  'Turkey': { group:null, note:"Russia’s largest diesel buyer; re-exports products to the EU.",
+    exports:[{to:"EU",pct:45},{to:"Other",pct:55}],
+    imports:[{from:"Russia",pct:55},{from:"Gulf refiners",pct:15},{from:"India",pct:10},{from:"Other",pct:20}] },
+  'Japan': { group:null, note:"Imports mostly naphtha and LPG feedstock.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"South Korea",pct:30},{from:"Gulf refiners",pct:25},{from:"China",pct:12},{from:"Other",pct:33}] },
+  'Vietnam': { group:null, note:"Imports fill the gap left by limited domestic refining.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"South Korea",pct:35},{from:"Singapore",pct:20},{from:"China",pct:15},{from:"Malaysia",pct:10},{from:"Other",pct:20}] },
+  'United Kingdom': { group:null, note:"Refining capacity has shrunk; relies on ARA imports.",
+    exports:[{to:"None",pct:0}],
+    imports:[{from:"ARA hub (Netherlands, Belgium)",pct:40},{from:"India",pct:15},{from:"USA",pct:12},{from:"Gulf refiners",pct:10},{from:"Other",pct:23}] },
+  'Canada': { group:null, note:"Integrated with the US product market.",
+    exports:[{to:"USA",pct:85},{to:"Other",pct:15}],
+    imports:[{from:"USA",pct:65},{from:"ARA hub (Netherlands)",pct:10},{from:"Other",pct:25}] }
+};
+
+/* Hub markers for places that aren't hoverable polygons at 110m
+   resolution: the EU (aggregate refined imports) and Singapore (too
+   small to appear in the topology). */
+const euHub = {
+  name:'EU (27)', c:[15,48],
+  note:'Refined-product (mainly diesel) import mix after the Feb 2023 embargo on Russian products.',
+  exports:[{to:'None',pct:0}],
+  imports:[{from:'USA',pct:22},{from:'India',pct:18},{from:'Saudi Arabia',pct:12},{from:'UAE',pct:9},{from:'Kuwait',pct:7},{from:'Turkey',pct:6},{from:'Russia',pct:0},{from:'Other suppliers',pct:26}]
+};
+const singaporeHub = { name:'Singapore', c:[103.8,1.35] }; // data: countryInfo['Singapore']
+
+/* EU-27 members hover as one "EU" tooltip — EXCEPT the Netherlands and
+   Belgium, which are the ARA hub on this view and keep their own entry. */
+const euMemberCountries = new Set([
+  'Austria','Bulgaria','Croatia','Cyprus','Czechia','Czech Republic','Czech Rep.',
+  'Denmark','Estonia','Finland','France','Germany','Greece','Hungary','Ireland','Italy',
+  'Latvia','Lithuania','Luxembourg','Malta','Poland','Portugal','Romania',
+  'Slovakia','Slovenia','Spain','Sweden'
+]);
+
+const chokepoints = [
+  {name:'Strait of Hormuz', c:[56.25,26.6], detail:'Everything leaving the Gulf refiners (Al-Zour, Ruwais, SATORP).'},
+  {name:'Bab-el-Mandeb', c:[43.4,12.6], dy:4, dx:-86, detail:'Red Sea entrance — Gulf and Indian diesel heading for Suez and Europe.'},
+  {name:'Suez Canal', c:[32.3,30.5], detail:'India and the Gulf shipping diesel into the EU; Russian products heading east.'},
+  {name:'Strait of Malacca', c:[100.5,3.5], detail:'The gateway to the Singapore hub and all of East Asia.'},
+  {name:'Panama Canal', c:[-79.5,9.0], detail:'US Gulf Coast products heading to Pacific Latin America.'}
+];
+
+const originLabels = [
+  {name:'USA Gulf Coast (exports)', c:[-95,29.5], dy:-8},
+  {name:'India (Jamnagar)', c:[70,22.3], dy:16},
+  {name:'Russia (Baltic)', c:[29,60], dy:-8},
+  {name:'Russia (Black Sea)', c:[37.8,44.7], dy:-6},
+  {name:'Saudi Arabia', c:[45,23.5], dy:4, dx:-40},
+  {name:'Kuwait', c:[47.7,29.3], dy:2, dx:-50},
+  {name:'UAE', c:[54,23.5], dy:6, dx:12},
+  {name:'Netherlands (ARA)', c:[5.5,52.3], dy:-6, dx:8},
+  {name:'Belgium (ARA)', c:[4.5,50.6], dy:10, dx:-78},
+  {name:'South Korea', c:[128.5,35.5], dy:-8},
+  {name:'China', c:[114,23], dy:-6},
+  {name:'Singapore hub', c:[103.8,1.35], dy:14}
+];
+
+const destLabels = [
+  {name:'Mexico', c:[-100,21], dy:14},
+  {name:'Pacific Latin America', c:[-77,-12], dy:14},
+  {name:'Brazil', c:[-45,-20], dy:14},
+  {name:'Nigeria / West Africa', c:[3.4,6.4], dy:14},
+  {name:'East Africa', c:[39.5,-5], dy:14},
+  {name:'Turkey', c:[32,39.5], dy:4, dx:-44},
+  {name:'EU (imports)', c:[15,48], dy:14},
+  {name:'Australia', c:[151,-33.9], dy:14},
+  {name:'Indonesia', c:[106.8,-6.2], dy:14},
+  {name:'Japan', c:[139,37], dy:14, dx:8},
+  {name:'Vietnam', c:[106.7,10.8], dy:-2, dx:10},
+  {name:'UK', c:[-2,53.5], dy:4, dx:-30},
+  {name:'Canada', c:[-100,58], dy:0}
+];
+
+/* Each route: pts = ordered [lon,lat] waypoints from exporter to importer
+   (arrow at the last point). group = exporter group key. dash = barge /
+   pipeline / indirect (re-export or transshipment) flow. bend = curve
+   height. label / detail feed the hover tooltip. from / to = country
+   names (topology names, 'EU', 'Singapore') the arrow connects — used by
+   click-a-country isolation; empty when the end isn't a tracked country.
+   Mirrors the "Export flows" sheet in refined.xlsx. */
+const routes = [
+  // USA
+  {pts:[[-95,29.5],[-100,21]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Mexico"], label:'USA → Mexico', detail:'~20% of US refined exports — the single largest destination. Gasoline & diesel by tanker, pipeline and rail.'},
+  {pts:[[-95,29.5],[-79.5,9],[-77,-12]], group:'usa', dash:false, bend:6, from:["United States of America"], to:[], label:'USA → Pacific Latin America (Panama Canal)', detail:'Peru, Chile, Ecuador and Central America — part of the ~25% going to Latin America.'},
+  {pts:[[-95,29.5],[-45,-20]], group:'usa', dash:false, bend:-20, from:["United States of America"], to:["Brazil"], label:'USA → Brazil', detail:'Brazil’s largest diesel supplier (~40% of its imports).'},
+  {pts:[[-95,29.5],[15,48]], group:'usa', dash:false, bend:-30, from:["United States of America"], to:["EU"], label:'USA → EU', detail:'~12% of US refined exports; the EU’s top product supplier (~22%).'},
+  // India
+  {pts:[[70,22.3],[43.4,12.6],[32.3,30.5],[15,48]], group:'ind', dash:false, bend:8, from:["India"], to:["EU"], label:'India → EU (via Suez)', detail:'~25% of India’s product exports. India replaced much of the lost Russian diesel after the 2023 embargo.'},
+  {pts:[[70,22.3],[39.5,-5]], group:'ind', dash:false, bend:10, from:["India"], to:[], label:'India → East Africa', detail:'Part of the ~18% going to Africa.'},
+  {pts:[[70,22.3],[103.8,1.35]], group:'ind', dash:false, bend:12, from:["India"], to:["Singapore"], label:'India → Singapore', detail:'~12% — feeds the Singapore blending/trading hub.'},
+  {pts:[[70,22.3],[151,-33.9]], group:'ind', dash:false, bend:-18, from:["India"], to:["Australia"], label:'India → Australia', detail:'~8% of India’s product exports.'},
+  // Russia
+  {pts:[[37.8,44.7],[32,39.5]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Turkey"], label:'Russia → Turkey (Black Sea)', detail:'~25% — Turkey became Russia’s largest diesel buyer after the EU embargo.'},
+  {pts:[[29,60],[3.4,6.4]], group:'rus', dash:false, bend:22, from:["Russia"], to:["Nigeria"], label:'Russia → West Africa (Baltic)', detail:'Part of the ~22% going to Africa.'},
+  {pts:[[29,60],[-45,-20]], group:'rus', dash:false, bend:30, from:["Russia"], to:["Brazil"], label:'Russia → Brazil (Baltic)', detail:'~12% — Brazil became a major Russian diesel buyer post-2022.'},
+  {pts:[[37.8,44.7],[32.3,30.5],[43.4,12.6],[51,13.5],[59,21],[56.3,25.1]], group:'rus', dash:true, bend:4, from:["Russia"], to:["United Arab Emirates"], label:'Russia → UAE (Fujairah blending)', detail:'Discounted Russian fuel oil blended in Fujairah and re-exported — ~35% of UAE product imports.'},
+  {pts:[[32,39.5],[15,48]], group:'rus', dash:true, bend:6, from:["Turkey", "Russia"], to:["EU"], label:'Turkey → EU (Russian-origin re-exports)', detail:'Indirect route back into Europe — Turkish re-exports are ~6% of EU product imports.'},
+  // Gulf refiners
+  {pts:[[48,28.5],[56.25,26.6],[59,21],[51,13.5],[43.4,12.6],[32.3,30.5],[15,48]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["EU"], label:'Gulf refiners → EU (Hormuz, Bab-el-Mandeb, Suez)', detail:'Saudi Arabia 12%, UAE 9%, Kuwait 7% of EU product imports. Al-Zour output is largely aimed at Europe.'},
+  {pts:[[48,28.5],[56.25,26.6],[59,21],[39.5,-5]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:[], label:'Gulf refiners → East Africa', detail:'Saudi Arabia ~12%, UAE ~18% of their product exports.'},
+  {pts:[[48,28.5],[56.25,26.6],[100.5,3.5],[139,35.5]], group:'gulf', dash:false, bend:10, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["Singapore", "China", "Japan", "South Korea"], label:'Gulf refiners → Asia (via Malacca)', detail:'Singapore, China, Japan and South Korea — the Gulf’s largest outlet (~30% of Singapore’s imports).'},
+  // Singapore
+  {pts:[[103.8,1.35],[106.8,-6.2]], group:'sgp', dash:false, bend:6, from:["Singapore"], to:["Indonesia"], label:'Singapore → Indonesia', detail:'~22% of Singapore’s exports; ~35% of Indonesia’s product imports.'},
+  {pts:[[103.8,1.35],[151,-33.9]], group:'sgp', dash:false, bend:12, from:["Singapore"], to:["Australia"], label:'Singapore → Australia', detail:'~15% of Singapore’s exports; ~25% of Australia’s imports.'},
+  {pts:[[103.8,1.35],[106.7,10.8]], group:'sgp', dash:false, bend:-6, from:["Singapore"], to:["Vietnam"], label:'Singapore → Vietnam', detail:'~10% of Singapore’s exports.'},
+  // ARA hub
+  {pts:[[4.5,51.9],[15,48]], group:'ara', dash:true, bend:4, from:["Netherlands", "Belgium"], to:["EU"], label:'ARA → EU inland (Rhine barges, pipelines)', detail:'~45–55% of ARA exports stay in Europe.'},
+  {pts:[[4.5,51.9],[-1,52.5]], group:'ara', dash:false, bend:4, from:["Netherlands", "Belgium"], to:["United Kingdom"], label:'ARA → UK', detail:'~40% of UK product imports come from ARA.'},
+  {pts:[[4.5,51.9],[3.4,6.4]], group:'ara', dash:false, bend:-10, from:["Netherlands", "Belgium"], to:["Nigeria"], label:'ARA → West Africa', detail:'The historic gasoline route to Nigeria — shrinking as the Dangote refinery ramps up.'},
+  {pts:[[4.5,51.9],[-74,40.5]], group:'ara', dash:false, bend:16, from:["Netherlands", "Belgium"], to:["United States of America"], label:'ARA → US East Coast', detail:'Gasoline blendstock — ~12% of US product imports.'},
+  // South Korea
+  {pts:[[128.5,35.5],[151,-33.9]], group:'kor', dash:false, bend:-14, from:["South Korea"], to:["Australia"], label:'South Korea → Australia', detail:'~20% of Korean product exports; Australia’s largest supplier (~30%).'},
+  {pts:[[128.5,35.5],[139,35.5]], group:'kor', dash:false, bend:8, from:["South Korea"], to:["Japan"], label:'South Korea → Japan', detail:'~12% of Korean product exports.'},
+  {pts:[[128.5,35.5],[106.7,10.8]], group:'kor', dash:false, bend:10, from:["South Korea"], to:["Vietnam"], label:'South Korea → Vietnam', detail:'~10% of Korean exports; ~35% of Vietnam’s product imports.'},
+  // China
+  {pts:[[114,23],[103.8,1.35]], group:'chn', dash:false, bend:-10, from:["China"], to:["Singapore"], label:'China → Singapore', detail:'~25% of China’s product exports, when export quotas allow.'},
+  {pts:[[114,23],[121,14.6]], group:'chn', dash:false, bend:6, from:["China"], to:["Philippines"], label:'China → Philippines', detail:'~12% of China’s product exports.'},
+  {pts:[[114,23],[151,-33.9]], group:'chn', dash:false, bend:-24, from:["China"], to:["Australia"], label:'China → Australia', detail:'~12% of China’s product exports.'}
+];
+
+const destGlow = [
+  {c:[15,48], group:'usa'},{c:[15,48], group:'ind'},{c:[15,48], group:'gulf'},{c:[15,48], group:'ara'},{c:[15,48], group:'rus'},
+  {c:[-100,21], group:'usa'},{c:[-77,-12], group:'usa'},
+  {c:[-45,-20], group:'usa'},{c:[-45,-20], group:'rus'},
+  {c:[32,39.5], group:'rus'},{c:[56.3,25.1], group:'rus'},
+  {c:[3.4,6.4], group:'rus'},{c:[3.4,6.4], group:'ara'},
+  {c:[39.5,-5], group:'ind'},{c:[39.5,-5], group:'gulf'},
+  {c:[103.8,1.35], group:'ind'},{c:[103.8,1.35], group:'chn'},
+  {c:[151,-33.9], group:'ind'},{c:[151,-33.9], group:'sgp'},{c:[151,-33.9], group:'kor'},{c:[151,-33.9], group:'chn'},
+  {c:[106.8,-6.2], group:'sgp'},{c:[106.7,10.8], group:'sgp'},{c:[106.7,10.8], group:'kor'},
+  {c:[139,35.5], group:'gulf'},{c:[139,35.5], group:'kor'},
+  {c:[-1,52.5], group:'ara'},{c:[-74,40.5], group:'ara'},{c:[121,14.6], group:'chn'}
+];
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const landFill = '#262623';
+const landStroke = '#4a4944';
+// Importer countries (group:null in countryInfo) and EU members (minus the
+// Netherlands/Belgium, which are the ARA hub here): a slightly lighter gray
+// than untracked land, so importers stand out.
+const importFill = '#43423e';
+const importStroke = '#5e5d57';
+function isImporter(n){ return euMemberCountries.has(n) || (countryInfo[n] && !countryInfo[n].group); }
+const labelFill = '#f0efec';
+
+// Zoomed in and shifted left: the empty Pacific on the far left is cropped
+// so the Middle East / Asia get more room (Hawaii and the far Arctic fall outside).
+const projection = d3.geoNaturalEarth1().scale(200).translate([420,270]);
+const path = d3.geoPath(projection);
+const svg = d3.select('#refinedMap').append('svg')
+  .attr('viewBox','0 0 960 500')
+  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; applyFocus(); }); // click the sea = reset
+
+svg.append('defs').html(
+  '<marker id="refined-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+  '<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></marker>'
+);
+
+function pt(c){ return projection(c); }
+function curvePath(points, bend){
+  const p = points.map(pt);
+  let d = 'M'+p[0][0]+','+p[0][1];
+  for (let i=1;i<p.length;i++){
+    const mx=(p[i-1][0]+p[i][0])/2, my=(p[i-1][1]+p[i][1])/2 - bend;
+    d += ' Q'+mx+','+my+' '+p[i][0]+','+p[i][1];
+  }
+  return d;
+}
+
+// ---- tooltip ----
+const tooltip = d3.select('#tooltip');
+function showTooltip(event, titleHtml, dotColor, bodyHtml){
+  tooltip.html(
+    '<div class="tt-title">' + (dotColor ? '<span class="tt-dot" style="background:'+dotColor+'"></span>' : '') + titleHtml + '</div>' +
+    '<div class="tt-body">' + bodyHtml + '</div>'
+  );
+  moveTooltip(event);
+  tooltip.classed('show', true);
+}
+function moveTooltip(event){
+  const pad = 14;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const ttNode = tooltip.node();
+  const w = ttNode.offsetWidth || 240, h = ttNode.offsetHeight || 60;
+  let x = event.clientX + pad, y = event.clientY + pad;
+  if (x + w + pad > vw) x = event.clientX - w - pad;
+  if (y + h + pad > vh) y = event.clientY - h - pad;
+  tooltip.style('left', x + 'px').style('top', y + 'px');
+}
+function hideTooltip(){ tooltip.classed('show', false); }
+
+function formatStatLine(pct, place){
+  return '<b>' + pct + '%</b> ' + place;
+}
+function formatCountryStats(info){
+  const exportsPct = info.exports.reduce((s,e)=>s+e.pct, 0);
+  const importsPct = info.imports.reduce((s,e)=>s+e.pct, 0);
+  return (
+    '<div style="margin-top:4px"><b>Export</b> (' + Math.round(exportsPct) + '%)<br>' +
+      info.exports.map(e => formatStatLine(e.pct, e.to)).join('<br>') + '</div>' +
+    '<div style="margin-top:4px"><b>Import</b> (' + Math.round(importsPct) + '%)<br>' +
+      info.imports.map(e => formatStatLine(e.pct, e.from)).join('<br>') + '</div>'
+  );
+}
+function showCountryTooltip(event, name, info){
+  const g = info.group ? groupByKey[info.group] : null;
+  showTooltip(event, name, g ? g.color : '#888780',
+    '<b>' + (g ? g.name : 'Importer (not part of a colored group)') + '</b>' +
+    (info.note ? '<br>' + info.note : '') +
+    formatCountryStats(info));
+}
+function showEuTooltip(event){
+  showTooltip(event, euHub.name, '#e0ded4', euHub.note + formatCountryStats(euHub));
+}
+
+// ---- legend state (click to isolate a group) ----
+let activeGroup = null;   // null = show all
+let activeRoute = null;   // a single clicked arrow; null = none
+let activeCountry = null; // a countryInfo name, 'EU' or 'Singapore'; null = none
+
+// Which clickable "entity" a topology country belongs to (EU members → 'EU').
+function entityOf(n){ return euMemberCountries.has(n) ? 'EU' : (countryInfo[n] ? n : null); }
+// Click a country: isolate it and every arrow into / out of it. Click it
+// again (or the sea, or an untracked country) to reset.
+function selectCountry(e){
+  activeCountry = (e && activeCountry !== e) ? e : null;
+  activeGroup = null;
+  activeRoute = null;
+  applyFocus();
+}
+
+// Click an arrow: isolate it and the countries at its two ends. Click it
+// again (or the sea) to reset.
+function selectRoute(r){
+  activeRoute = (activeRoute === r) ? null : r;
+  activeCountry = null;
+  activeGroup = null;
+  applyFocus();
+}
+
+function applyFocus(){
+  if (activeRoute){
+    const ends = new Set(activeRoute.from.concat(activeRoute.to));
+    svg.selectAll('.country')
+      .classed('faded', d => !ends.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => ends.has(entityOf(d.properties && d.properties.name)));
+    svg.selectAll('.route').classed('faded', d => d !== activeRoute)
+      .style('display', d => (d.minor && d !== activeRoute) ? 'none' : null);
+    const endKey = activeRoute.pts[activeRoute.pts.length-1].join() + '|' + activeRoute.group;
+    svg.selectAll('.glow').style('opacity', d => (d.c.join() + '|' + d.group) === endKey ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
+  if (activeCountry){
+    const linked = routes.filter(r => r.from.includes(activeCountry) || r.to.includes(activeCountry));
+    const keep = new Set([activeCountry]);
+    linked.forEach(r => r.from.concat(r.to).forEach(e => keep.add(e)));
+    const ends = new Set(linked.map(r => r.pts[r.pts.length-1].join() + '|' + r.group));
+    svg.selectAll('.country')
+      .classed('faded', d => !keep.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => entityOf(d.properties && d.properties.name) === activeCountry);
+    svg.selectAll('.route').classed('faded', d => !linked.includes(d));
+    svg.selectAll('.glow').style('opacity', d => ends.has(d.c.join() + '|' + d.group) ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
+  svg.selectAll('.country').classed('selected', false);
+  svg.selectAll('.country').classed('faded', function(d){
+    if (!activeGroup) return false;
+    const info = countryInfo[d.properties && d.properties.name];
+    return !(info && info.group === activeGroup);
+  });
+  svg.selectAll('.route').classed('faded', d => activeGroup ? d.group !== activeGroup : false);
+  svg.selectAll('.glow').style('opacity', d => (activeGroup ? (d.group === activeGroup ? 0.3 : 0) : 0.22));
+  legend.selectAll('.legend-item').classed('dimmed', function(){
+    if (!activeGroup) return false;
+    return d3.select(this).attr('data-key') !== activeGroup;
+  });
+}
+
+// ---- legend ----
+const legend = d3.select('#refinedLegend');
+const legendHeader = legend.append('div').attr('class','legend-header');
+legendHeader.append('span').attr('class','legend-title').text('EXPORTER / HUB:');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map');
+legend.selectAll('.legend-item').data(groups).join('div')
+  .attr('class','legend-item')
+  .attr('data-key', d=>d.key)
+  .on('click', function(event, d){
+    activeCountry = null;
+    activeRoute = null;
+    activeGroup = (activeGroup === d.key) ? null : d.key;
+    applyFocus();
+  })
+  .html(d => '<span class="sw" style="background:'+d.color+'"></span><span><b>' + d.name + '</b> — ' + d.desc + '</span>');
+
+// ---- line-style key (what solid vs dotted routes mean) ----
+const lineKey = legend.append('div').attr('class','line-key');
+lineKey.append('span').attr('class','legend-title').text('ROUTES:');
+lineKey.selectAll('.line-key-row').data([
+  {dash:null,  text:'<b>Solid</b> — direct tanker route'},
+  {dash:'4 3', text:'<b>Dotted</b> — indirect flow (re-export, blending / transshipment) or inland barge / pipeline'}
+]).join('div')
+  .attr('class','line-key-row')
+  .html(d => '<svg viewBox="0 0 28 8"><line x1="1" y1="4" x2="27" y2="4" stroke="#a3a29c" stroke-width="1.7"' +
+    (d.dash ? ' stroke-dasharray="'+d.dash+'"' : '') + '/></svg><span>' + d.text + '</span>');
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
+  const countries = topojson.feature(world, world.objects.countries).features;
+
+  svg.append('g').selectAll('path').data(countries).join('path')
+    .attr('class','country')
+    .attr('d',path)
+    .attr('fill', d=>{
+      if (isImporter(d.properties && d.properties.name)) return importFill;
+      const info = countryInfo[d.properties && d.properties.name];
+      return (info && info.group) ? groupByKey[info.group].color : landFill;
+    })
+    .attr('stroke', d=>{
+      if (isImporter(d.properties && d.properties.name)) return importStroke;
+      const info = countryInfo[d.properties && d.properties.name];
+      return (info && info.group) ? groupByKey[info.group].stroke : landStroke;
+    })
+    .attr('stroke-width',1)
+    .on('mouseenter', function(event, d){
+      const n = d.properties && d.properties.name;
+      d3.select(this).classed('hovered', true);
+      if (euMemberCountries.has(n)){ showEuTooltip(event); return; }
+      const info = countryInfo[n];
+      if (info) showCountryTooltip(event, n === 'United Kingdom' ? 'UK' : n, info);
+      else showTooltip(event, n, null, 'Not part of the tracked refined-product flows on this map.');
+    })
+    .on('click', function(event, d){ event.stopPropagation(); selectCountry(entityOf(d.properties && d.properties.name)); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  svg.append('g').selectAll('circle').data(destGlow).join('circle')
+    .attr('class','glow')
+    .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1])
+    .attr('r',16).attr('fill',d=>groupByKey[d.group].color).attr('opacity',0.22).attr('stroke','none');
+
+  svg.append('g').selectAll('path').data(routes).join('path')
+    .attr('class','route')
+    .attr('d',d=>curvePath(d.pts,d.bend)).attr('fill','none')
+    .attr('stroke',d=>groupByKey[d.group].color).attr('stroke-width',1.7)
+    .attr('stroke-dasharray',d=>d.dash?'4 3':null).attr('opacity',0.95)
+    .attr('marker-end','url(#refined-arrow)')
+    .on('mouseenter', function(event, d){
+      d3.select(this).classed('hovered', true);
+      showTooltip(event, d.label, groupByKey[d.group].color, d.detail);
+    })
+    .on('click', (event, d) => { event.stopPropagation(); selectRoute(d); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  svg.append('g').selectAll('path').data(chokepoints).join('path')
+    .attr('class','chokepoint')
+    .attr('d',d=>{const p=pt(d.c); return `M${p[0]},${p[1]-5}L${p[0]+5},${p[1]}L${p[0]},${p[1]+5}L${p[0]-5},${p[1]}Z`;})
+    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5)
+    .on('mouseenter', function(event, d){ showTooltip(event, d.name, '#888780', d.detail); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', hideTooltip);
+
+  // EU hub marker
+  svg.append('circle')
+    .attr('class','chokepoint')
+    .attr('cx', pt(euHub.c)[0]).attr('cy', pt(euHub.c)[1]).attr('r', 6)
+    .attr('fill','none').attr('stroke','#e0ded4').attr('stroke-width',1.5)
+    .on('mouseenter', showEuTooltip)
+    .on('click', event => { event.stopPropagation(); selectCountry('EU'); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', hideTooltip);
+
+  // Singapore hub marker (not a polygon at 110m resolution)
+  svg.append('circle')
+    .attr('class','chokepoint')
+    .attr('cx', pt(singaporeHub.c)[0]).attr('cy', pt(singaporeHub.c)[1]).attr('r', 5)
+    .attr('fill', groupByKey.sgp.color).attr('stroke','#e0ded4').attr('stroke-width',1.2)
+    .on('mouseenter', event => showCountryTooltip(event, singaporeHub.name, countryInfo['Singapore']))
+    .on('click', event => { event.stopPropagation(); selectCountry('Singapore'); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', hideTooltip);
+
+  function label(d){
+    const p = pt(d.c);
+    svg.append('text').attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
+      .attr('font-size',11).attr('fill',labelFill).text(d.name);
+  }
+  originLabels.forEach(label);
+  destLabels.forEach(label);
+  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+});
+})(); // end REFINED
+</script>
+</body>
+</html>
