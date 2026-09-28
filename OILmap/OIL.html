@@ -69,10 +69,28 @@
   .zoom-controls button:hover { background:#252523; }
 
   .glow { pointer-events:none; }
+  .chokepoint-halo { pointer-events:none; }
+  .chokepoint.faded, .chokepoint-halo.faded { opacity:0.3; }
+  path.chokepoint.selected { stroke:#ffffff; stroke-width:calc(2px / var(--k, 1)); }
   .chokepoint { cursor:pointer; }
   .chokepoint:hover { filter: brightness(1.4); }
 
   .label-text { pointer-events:none; }
+
+  /* FIELDS view markers */
+  .field { cursor:pointer; transition: opacity .15s ease; }
+  .field.hovered { stroke:#ffffff; }
+  .field.faded { opacity:0.1; }
+  .field.selected { stroke:#ffffff; stroke-width:calc(2px / var(--k, 1)) !important; }
+  /* The legend is exactly as tall as the map: "contain:size" stops its
+     content from growing the row, so the map sets the height and the
+     legend stretches to it; the company list scrolls inside. */
+  .fields-legend { margin-top:0; align-self:stretch; contain:size; }
+  @media (max-width: 760px) { .fields-legend { contain:none; align-self:auto; max-height:70vh; } }
+  .fields-legend .company-list { flex:1 1 auto; min-height:0; overflow-y:auto; margin-right:-6px; padding-right:6px; }
+  .fields-legend .legend-item { align-items:flex-start; line-height:1.35; }
+  .fields-legend .legend-item .sw { margin-top:3px; }
+  .fields-legend .tag { font-size:9.5px; padding:0 4px; border-radius:3px; border:1px solid var(--panel-border); color:var(--sub); white-space:nowrap; }
 
   #tooltip {
     position:fixed; z-index:50; pointer-events:none; max-width:300px;
@@ -95,6 +113,7 @@
 <div class="type-toggle" id="typeToggle">
   <button class="type-btn active" data-type="crude">CRUDE</button>
   <button class="type-btn" data-type="refined">REFINED</button>
+  <button class="type-btn" data-type="fields">FIELDS</button>
 </div>
 
 <!-- CRUDE view — rendered only by the CRUDE script below -->
@@ -113,16 +132,24 @@
   </div>
 </div>
 
+<!-- FIELDS view — rendered only by the FIELDS script below -->
+<div class="view" id="fieldsView" hidden>
+  <div class="wrap">
+    <div class="map-col"><div class="map" id="fieldsMap"></div></div>
+    <div class="legend" id="fieldsLegend"></div>
+  </div>
+</div>
+
 <div id="tooltip"></div>
 
-<footer>Data as of ~Sept 2026, see <code>crude.xlsx</code> and <code>refined.xlsx</code> for full sourcing, percentages, and routing notes behind every figure shown here.</footer>
+<footer>Data as of ~Sept 2026, see <code>crude.xlsx</code>, <code>refined.xlsx</code> and <code>fields.xlsx</code> for full sourcing, percentages, and routing notes behind every figure shown here.</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script>
 /* ============================================================
-   CRUDE / REFINED TOGGLE — the only code shared by both views.
-   It just shows one view and hides the other; each view's data and
+   CRUDE / REFINED / FIELDS TOGGLE — the only code shared by the views.
+   It just shows one view and hides the others; each view's data and
    rendering live in their own independent script block below.
    ============================================================ */
 d3.selectAll('.type-btn').on('click', function(){
@@ -131,6 +158,7 @@ d3.selectAll('.type-btn').on('click', function(){
   d3.select(this).classed('active', true);
   d3.select('#crudeView').attr('hidden', type === 'crude' ? null : true);
   d3.select('#refinedView').attr('hidden', type === 'refined' ? null : true);
+  d3.select('#fieldsView').attr('hidden', type === 'fields' ? null : true);
   d3.select('#tooltip').classed('show', false);
 });
 </script>
@@ -288,10 +316,14 @@ const euMemberCountries = new Set([
 ]);
 
 const chokepoints = [
-  {name:'Strait of Hormuz', c:[56.25,26.6], detail:'Used by Iran→China and Saudi Arabia/Iraq→EU flows.'},
-  {name:'Suez Canal', c:[32.3,30.5], dy:14, detail:'Used by Saudi Arabia and Iraq exports headed to the EU.'},
-  {name:'Panama Canal', c:[-79.5,9.0], detail:'USA→Asia route for Suezmax cargoes (VLCCs don’t fit the locks). Traffic hit a 4-year high in Apr 2026.'},
-  {name:'Cape of Good Hope', c:[18,-34], detail:'USA→Asia route for full VLCCs (up to 2M bbl) too large for Panama or a loaded Suez transit.'}
+  {name:'Strait of Hormuz', control:'Iran (north shore) and Oman (Musandam, south shore) — the shipping lanes run through Omani waters.', c:[56.25,26.6], detail:'Gulf crude (Iran, Iraq, Saudi Arabia) heading to Asia, Europe and the US.'},
+  {name:'Bab-el-Mandeb', control:'Yemen (east shore) and Djibouti (west shore), with Eritrea nearby. Houthi forces on Yemen’s Red Sea coast have attacked shipping since late 2023.', c:[43.4,12.6], dy:4, dx:-100, detail:'Red Sea entrance — Basrah crude heading for Suez, Europe and the US; Russian Urals heading to India.'},
+  {name:'Suez Canal', control:'Egypt — run by the Suez Canal Authority.', c:[32.3,30.5], dy:16, dx:-6, detail:'Saudi (from Yanbu on the Red Sea) and Iraqi crude heading to the EU and the Americas; Russian Urals heading to India.'},
+  {name:'Strait of Malacca', control:'Malaysia, Indonesia and Singapore, which patrol it jointly.', c:[100.5,3.5], detail:'Gulf crude to China, Japan and South Korea — plus Atlantic cargoes that came round the Cape.'},
+  {name:'Panama Canal', control:'Panama — run by the Panama Canal Authority since the 1999 US handover.', c:[-79.5,9.0], detail:'USA→Asia route for Suezmax cargoes (VLCCs don’t fit the locks). Traffic hit a 4-year high in Apr 2026.'},
+  {name:'Cape of Good Hope', control:'South Africa holds the coast, but ships sail in open ocean — no country can close it.', c:[18,-34], dy:14, detail:'The long way round Africa: full VLCCs (up to 2M bbl) too large for Panama or a loaded Suez transit — Atlantic crude to Asia, Gulf crude to Brazil.'},
+  {name:'Danish Straits', control:'Denmark (and Sweden on the Øresund). Free passage is guaranteed by the 1857 Copenhagen Convention.', c:[11,56], dy:-4, dx:-92, detail:'Baltic exit — Russian Urals loaded at Primorsk and Ust-Luga.'},
+  {name:'Turkish Straits', control:'Turkey — passage is governed by the 1936 Montreux Convention.', c:[29,41.1], dy:-18, dx:8, detail:'Bosphorus and Dardanelles — Kazakh CPC Blend and Russian Urals from Novorossiysk heading into the Mediterranean.'}
 ];
 
 const originLabels = [
@@ -319,7 +351,7 @@ const destLabels = [
   {name:'South Korea (imports)', c:[128,36.5], dy:14},
   {name:'India (imports)', c:[78,21], dy:14},
   {name:'Cuba (imports)', c:[-79,22], dy:14, dx:10},
-  {name:'Turkey (imports)', c:[29,39.5], dy:-7, dx:-24},
+  {name:'Turkey (imports)', c:[29,39.5], dy:-7, dx:-100},
   {name:'Israel (imports)', c:[35,32.8], dy:-12, dx:-96},
   {name:'Japan (imports)', c:[139,37], dy:-10, dx:6},
   {name:'UK (imports/exports)', c:[-2,53.5], dy:4, dx:-128}
@@ -332,48 +364,48 @@ const destLabels = [
    from / to = country names (topology names, or 'EU') the arrow connects —
    used by click-a-country isolation. */
 const routes = [
-  {pts:[[53,32],[56.25,26.6],[108,34]], group:'me', dash:false, bend:20, from:["Iran"], to:["China"], label:'Iran → China', detail:'~91% of Iran’s exports. Via the Strait of Hormuz.'},
+  {pts:[[53,32],[56.25,26.6],[108,34]], group:'me', dash:false, bend:20, via:['Strait of Malacca'], from:["Iran"], to:["China"], label:'Iran → China', detail:'~91% of Iran’s exports. Via the Strait of Hormuz.'},
   {pts:[[45,24],[32.3,30.5],[15,48]], group:'me', dash:false, bend:12, from:["Saudi Arabia"], to:["EU"], label:'Saudi Arabia → EU', detail:'Via the Suez Canal.'},
-  {pts:[[44,33],[32.3,30.5],[15,48]], group:'me', dash:false, bend:16, from:["Iraq"], to:["EU"], label:'Iraq → EU', detail:'Basrah crude, via the Suez Canal.'},
+  {pts:[[44,33],[32.3,30.5],[15,48]], group:'me', dash:false, bend:16, via:['Strait of Hormuz', 'Bab-el-Mandeb'], from:["Iraq"], to:["EU"], label:'Iraq → EU', detail:'Basrah crude, via Hormuz, Bab-el-Mandeb and the Suez Canal — the short route; since the Red Sea attacks many cargoes go round the Cape instead (dotted arrow, shown when Iraq or a chokepoint is selected).'},
   {pts:[[-102,31],[15,48]], group:'usa', dash:false, bend:-30, from:["United States of America"], to:["EU"], label:'USA → EU (Netherlands)', detail:'One of the USA’s top export destinations.'},
   {pts:[[-102,31],[-2,53]], group:'usa', dash:false, bend:-40, from:["United States of America"], to:["United Kingdom"], label:'USA → UK', detail:'~10% of US crude exports; the US supplies ~20% of the UK’s crude imports (second only to Norway).'},
   {pts:[[-102,31],[-79.5,9],[-178,32]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["South Korea","Japan","China"], label:'USA → Asia (Panama Canal)', detail:'Suezmax cargoes; ~1 month transit. Traffic hit a 4-yr high Apr 2026.'},
-  {pts:[[178,32],[128,36.5]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["South Korea"], label:'USA → South Korea', detail:'Continuation of the Panama Canal route.'},
-  {pts:[[-102,31],[-20,15],[18,-34],[80,-12],[128,36.5]], group:'usa', dash:true, bend:10, from:["United States of America"], to:["South Korea"], label:'USA → Asia (Cape of Good Hope)', detail:'Full VLCCs up to 2M bbl, too large for Panama/Suez when loaded. ~2 month transit.'},
+  {pts:[[178,32],[128,36.5]], group:'usa', dash:false, bend:6, via:['Panama Canal'], from:["United States of America"], to:["South Korea"], label:'USA → South Korea', detail:'Continuation of the Panama Canal route.'},
+  {pts:[[-102,31],[-20,15],[18,-34],[80,-12],[128,36.5]], group:'usa', dash:true, bend:10, via:['Strait of Malacca'], from:["United States of America"], to:["South Korea"], label:'USA → Asia (Cape of Good Hope)', detail:'Full VLCCs up to 2M bbl, too large for Panama/Suez when loaded. ~2 month transit.'},
   {pts:[[-97,55],[-102,31]], group:'usa', dash:false, bend:0, from:["Canada"], to:["United States of America"], label:'Canada → USA', detail:'~90% of Canadian crude exports go to the US.'},
   {pts:[[-66,8],[-102,31]], group:'ven', dash:false, bend:-25, from:["Venezuela"], to:["United States of America"], label:'Venezuela → USA', detail:'US refiners reclaiming volumes since the Jan 2026 Maduro capture.'},
   {pts:[[-66,8],[-79,22]], group:'ven', dash:false, bend:-8, from:["Venezuela"], to:["Cuba"], label:'Venezuela → Cuba', detail:'Subsidized shipments Cuba relies on for power generation — ~55% of Cuba’s crude imports.'},
-  {pts:[[-40,-22],[18,-34],[80,-12],[108,34]], group:'latam', dash:false, bend:10, from:["Brazil"], to:["China"], label:'Brazil → China', detail:'~45% of Brazil’s exports — China is the primary destination. VLCCs via the Cape of Good Hope.'},
+  {pts:[[-40,-22],[18,-34],[80,-12],[108,34]], group:'latam', dash:false, bend:10, via:['Strait of Malacca'], from:["Brazil"], to:["China"], label:'Brazil → China', detail:'~45% of Brazil’s exports — China is the primary destination. VLCCs via the Cape of Good Hope.'},
   {pts:[[-92,19],[-102,31]], group:'latam', dash:false, bend:-8, from:["Mexico"], to:["United States of America"], label:'Mexico → USA', detail:'~60% of Mexico’s exports — the US is the dominant buyer of Maya crude.'},
   {pts:[[-66,8],[108,34]], group:'ven', dash:true, bend:-60, from:["Venezuela"], to:["China"], label:'Venezuela → China', detail:'Dark-fleet route; ~550k bbl/d in 2025, collapsed to ~0 after the Dec 2025 US naval blockade.'},
   {pts:[[75,62],[108,34]], group:'rus', dash:true, bend:10, from:["Russia"], to:["China"], label:'Russia → China', detail:'ESPO pipeline, overland — no maritime chokepoint needed.'},
   {pts:[[132,43.5],[127,40]], group:'rus', dash:true, bend:6, from:["Russia"], to:["North Korea"], label:'Russia → North Korea', detail:'Small, sanctions-busting shipments from Russia’s Far East ports and by rail — ~30% of North Korea’s crude imports.'},
-  {pts:[[75,62],[78,21]], group:'rus', dash:false, bend:10, from:["Russia"], to:["India"], label:'Russia → India', detail:'Seaborne Urals shipments.'},
+  {pts:[[75,62],[78,21]], group:'rus', dash:false, bend:10, via:['Danish Straits', 'Turkish Straits', 'Suez Canal', 'Bab-el-Mandeb'], from:["Russia"], to:["India"], label:'Russia → India', detail:'Seaborne Urals from the Baltic (Danish Straits) and Novorossiysk (Turkish Straits), then Suez and Bab-el-Mandeb.'},
   {pts:[[8,9],[15,48]], group:'afr', dash:false, bend:-18, from:["Nigeria"], to:["EU"], label:'Nigeria → EU', detail:'Bonny Light, Qua Iboe. Direct, no major chokepoint.'},
   {pts:[[17,27],[15,48]], group:'afr', dash:false, bend:-14, from:["Libya"], to:["EU"], label:'Libya → EU', detail:'Es Sider, Sharara. ~9% of EU petroleum-oil imports.'},
   {pts:[[3,28],[15,48]], group:'afr', dash:false, bend:-10, from:["Algeria"], to:["EU"], label:'Algeria → EU', detail:'Saharan Blend, long-established EU supplier.'},
   {pts:[[17,-12],[15,48]], group:'afr', dash:false, bend:-22, from:["Angola"], to:["EU"], label:'Angola → EU', detail:'$5.5B of Angolan crude imported by the EU in 2024 alone.'},
   {pts:[[1,57.5],[15,48]], group:'eu', dash:false, bend:6, from:["United Kingdom"], to:["EU"], label:'UK → EU', detail:'North Sea (Brent) crude, mainly to the Netherlands and Germany — ~60% of UK crude exports.'},
-  {pts:[[1,57.5],[-12,40],[-18,10],[18,-34],[80,-12],[108,34]], group:'eu', dash:true, bend:6, from:["United Kingdom"], to:["China"], label:'UK → China (Cape of Good Hope)', detail:'~15% of UK crude exports. North Sea VLCC cargoes go the long way round Africa rather than through Suez / the Red Sea.'},
+  {pts:[[1,57.5],[-12,40],[-18,10],[18,-34],[80,-12],[108,34]], group:'eu', dash:true, bend:6, via:['Strait of Malacca'], from:["United Kingdom"], to:["China"], label:'UK → China (Cape of Good Hope)', detail:'~15% of UK crude exports. North Sea VLCC cargoes go the long way round Africa rather than through Suez / the Red Sea.'},
   {pts:[[10,61],[15,48]], group:'eu', dash:false, bend:-8, from:["Norway"], to:["EU"], label:'Norway → EU', detail:'Short North Sea hop. 16.6% of EU petroleum-oil imports (Q1 2026).'},
   {pts:[[48,40.4],[35.8,36.9],[15,48]], group:'aze', dash:true, bend:8, from:["Azerbaijan"], to:["EU"], label:'Azerbaijan → EU', detail:'~65% of Azerbaijan’s crude exports; ~4.5% of EU crude imports (project estimate). Azeri Light via the BTC pipeline to Ceyhan, then Mediterranean tanker — mainly to Italy.'},
   {pts:[[48,40.4],[35.8,36.9],[35,32.8]], group:'aze', dash:true, bend:4, from:["Azerbaijan"], to:["Israel"], label:'Azerbaijan → Israel', detail:'~20% of Azerbaijan’s crude exports; ~45% of Israel’s crude imports — its largest supplier (~94k bbl/d in 2025, Kpler). BTC pipeline to Ceyhan, then a short tanker hop — still flowing despite Turkey’s May 2024 trade ban.'},
-  {pts:[[68,48],[15,48]], group:'kaz', dash:true, bend:14, from:["Kazakhstan"], to:["EU"], label:'Kazakhstan → EU', detail:'CPC pipeline to Novorossiysk, then Black Sea tanker. 9.6% of EU petroleum-oil imports (Q1 2026).'},
+  {pts:[[68,48],[15,48]], group:'kaz', dash:true, bend:14, via:['Turkish Straits'], from:["Kazakhstan"], to:["EU"], label:'Kazakhstan → EU', detail:'CPC pipeline to Novorossiysk, then Black Sea tanker. 9.6% of EU petroleum-oil imports (Q1 2026).'},
   // ---- import connections: every flow in the data between two mapped countries.
   //      minor:true = hidden on the overview, shown when one of its countries
   //      (or its oil type) is selected. ----
-  {pts:[[17, -12], [19, -35], [80, -12], [108, 34]], group:'afr', dash:false, bend:8, from:["Angola"], to:["China"], label:'Angola → China', detail:"~45% of Angola’s crude exports; ~8% of China’s crude imports. Round the Cape of Good Hope."},
+  {pts:[[17, -12], [19, -35], [80, -12], [108, 34]], group:'afr', dash:false, bend:8, via:['Strait of Malacca'], from:["Angola"], to:["China"], label:'Angola → China', detail:"~45% of Angola’s crude exports; ~8% of China’s crude imports. Round the Cape of Good Hope."},
   {pts:[[17, -12], [19, -35], [78, 21]], group:'afr', dash:false, bend:8, minor:true, from:["Angola"], to:["India"], label:'Angola → India', detail:"~15% of Angola’s crude exports. Round the Cape of Good Hope."},
   {pts:[[-40, -22], [15, 48]], group:'latam', dash:false, bend:-14, minor:true, from:["Brazil"], to:["EU"], label:'Brazil → EU', detail:"~18% of Brazil’s crude exports. Across the Atlantic."},
   {pts:[[-40, -22], [19, -35], [78, 21]], group:'latam', dash:false, bend:8, minor:true, from:["Brazil"], to:["India"], label:'Brazil → India', detail:"~6% of Brazil’s crude exports. Round the Cape of Good Hope."},
   {pts:[[-40, -22], [-33, -6], [-62, 14], [-102, 31]], group:'latam', dash:false, bend:-6, minor:true, from:["Brazil"], to:["United States of America"], label:'Brazil → USA', detail:"~12% of Brazil’s crude exports; ~3% of USA’s crude imports. Up the Atlantic coast into the US Gulf."},
   {pts:[[121, 41], [127, 40]], group:null, dash:true, bend:4, from:["China"], to:["North Korea"], label:'China → North Korea', detail:"~65% of North Korea’s crude imports. Dandong–Sinuiju pipeline — North Korea’s main crude supply line."},
   {pts:[[53, 32], [33, 39.5]], group:'me', dash:false, bend:6, minor:true, from:["Iran"], to:["Turkey"], label:'Iran → Turkey', detail:"~5% of Turkey’s crude imports. Overland / short-haul."},
-  {pts:[[44, 33], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:24, from:["Iraq"], to:["China"], label:'Iraq → China', detail:"~35% of Iraq’s crude exports; ~12% of China’s crude imports. Basrah crude via the Strait of Hormuz."},
+  {pts:[[44, 33], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:24, via:['Strait of Malacca'], from:["Iraq"], to:["China"], label:'Iraq → China', detail:"~35% of Iraq’s crude exports; ~12% of China’s crude imports. Basrah crude via the Strait of Hormuz."},
   {pts:[[44, 33], [56.25, 26.6], [78, 21]], group:'me', dash:false, bend:10, minor:true, from:["Iraq"], to:["India"], label:'Iraq → India', detail:"~15% of Iraq’s crude exports; ~20% of India’s crude imports. Basrah crude via the Strait of Hormuz."},
-  {pts:[[44, 33], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:10, minor:true, from:["Iraq"], to:["South Korea"], label:'Iraq → South Korea', detail:"~10% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[44, 33], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:10, minor:true, via:['Strait of Malacca'], from:["Iraq"], to:["South Korea"], label:'Iraq → South Korea', detail:"~10% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
   {pts:[[44, 33], [33, 39.5]], group:'me', dash:true, bend:6, minor:true, from:["Iraq"], to:["Turkey"], label:'Iraq → Turkey', detail:"~20% of Turkey’s crude imports. Kirkuk–Ceyhan pipeline."},
-  {pts:[[44, 33], [56.25, 26.6], [50, 12], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:6, minor:true, from:["Iraq"], to:["United States of America"], label:'Iraq → USA', detail:"~5% of Iraq’s crude exports. Via Hormuz, the Red Sea, Suez and the Atlantic."},
+  {pts:[[44, 33], [56.25, 26.6], [50, 12], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:6, minor:true, via:['Bab-el-Mandeb'], from:["Iraq"], to:["United States of America"], label:'Iraq → USA', detail:"~5% of Iraq’s crude exports. Via Hormuz, the Red Sea, Suez and the Atlantic."},
   {pts:[[68, 48], [108, 34]], group:'kaz', dash:true, bend:12, from:["Kazakhstan"], to:["China"], label:'Kazakhstan → China', detail:"~20% of Kazakhstan’s crude exports; ~5% of China’s crude imports. Kazakhstan–China pipeline, overland."},
   {pts:[[68, 48], [37.8, 44.7], [29, 41.1], [26, 37], [35, 32.8]], group:'kaz', dash:true, bend:4, minor:true, from:["Kazakhstan"], to:["Israel"], label:'Kazakhstan → Israel', detail:"~10% of Kazakhstan’s crude exports; ~25% of Israel’s crude imports. CPC pipeline to Novorossiysk, then through the Turkish Straits and across the Mediterranean."},
   {pts:[[-92, 19], [-79, 22]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["Cuba"], label:'Mexico → Cuba', detail:"~3% of Mexico’s crude exports; ~25% of Cuba’s crude imports. Short Gulf of Mexico hop; subsidized shipments."},
@@ -385,18 +417,18 @@ const routes = [
   {pts:[[8, 9], [5, -5], [19, -35], [78, 21]], group:'afr', dash:false, bend:8, from:["Nigeria"], to:["India"], label:'Nigeria → India', detail:"~20% of Nigeria’s crude exports; ~6% of India’s crude imports. Round the Cape of Good Hope."},
   {pts:[[8, 9], [-102, 31]], group:'afr', dash:false, bend:-10, minor:true, from:["Nigeria"], to:["United States of America"], label:'Nigeria → USA', detail:"~15% of Nigeria’s crude exports. Across the Atlantic."},
   {pts:[[10, 61], [-2, 53]], group:'eu', dash:false, bend:6, from:["Norway"], to:["United Kingdom"], label:'Norway → UK', detail:"~15% of Norway’s crude exports; ~30% of UK’s crude imports. Short North Sea hop."},
-  {pts:[[29, 60], [-79, 22]], group:'rus', dash:false, bend:-16, minor:true, from:["Russia"], to:["Cuba"], label:'Russia → Cuba', detail:"~15% of Cuba’s crude imports. From the Baltic across the Atlantic."},
+  {pts:[[29, 60], [-79, 22]], group:'rus', dash:false, bend:-16, minor:true, via:['Danish Straits'], from:["Russia"], to:["Cuba"], label:'Russia → Cuba', detail:"~15% of Cuba’s crude imports. From the Baltic across the Atlantic."},
   {pts:[[45, 54], [15, 48]], group:'rus', dash:true, bend:-6, minor:true, from:["Russia"], to:["EU"], label:'Russia → EU', detail:"~0.8% of Russia’s crude exports; ~0.8% of EU’s crude imports. Druzhba pipeline to Hungary / Slovakia — the last direct Russian crude into the EU."},
-  {pts:[[37.8, 44.7], [33, 39.5]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Turkey"], label:'Russia → Turkey', detail:"~20% of Russia’s crude exports; ~45% of Turkey’s crude imports. Across the Black Sea from Novorossiysk."},
-  {pts:[[45, 24], [52, 12], [19, -35], [-43, -23]], group:'me', dash:false, bend:8, minor:true, from:["Saudi Arabia"], to:["Brazil"], label:'Saudi Arabia → Brazil', detail:"~20% of Brazil’s crude imports. Round the Cape of Good Hope."},
+  {pts:[[37.8, 44.7], [33, 39.5]], group:'rus', dash:false, bend:4, via:['Turkish Straits'], from:["Russia"], to:["Turkey"], label:'Russia → Turkey', detail:"~20% of Russia’s crude exports; ~45% of Turkey’s crude imports. Across the Black Sea from Novorossiysk."},
+  {pts:[[45, 24], [52, 12], [19, -35], [-43, -23]], group:'me', dash:false, bend:8, minor:true, via:['Strait of Hormuz'], from:["Saudi Arabia"], to:["Brazil"], label:'Saudi Arabia → Brazil', detail:"~20% of Brazil’s crude imports. Round the Cape of Good Hope."},
   {pts:[[45, 24], [32.3, 30.5], [-6, 36], [-72, 46]], group:'me', dash:false, bend:-8, minor:true, from:["Saudi Arabia"], to:["Canada"], label:'Saudi Arabia → Canada', detail:"~11.2% of Canada’s crude imports. Via Suez and across the Atlantic."},
-  {pts:[[45, 24], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:16, from:["Saudi Arabia"], to:["China"], label:'Saudi Arabia → China', detail:"~25% of Saudi Arabia’s crude exports; ~15% of China’s crude imports. Via the Strait of Hormuz."},
+  {pts:[[45, 24], [56.25, 26.6], [108, 34]], group:'me', dash:false, bend:16, via:['Strait of Malacca'], from:["Saudi Arabia"], to:["China"], label:'Saudi Arabia → China', detail:"~25% of Saudi Arabia’s crude exports; ~15% of China’s crude imports. Via the Strait of Hormuz."},
   {pts:[[45, 24], [56.25, 26.6], [78, 21]], group:'me', dash:false, bend:6, minor:true, from:["Saudi Arabia"], to:["India"], label:'Saudi Arabia → India', detail:"~12% of Saudi Arabia’s crude exports; ~15% of India’s crude imports. Via the Strait of Hormuz."},
-  {pts:[[45, 24], [56.25, 26.6], [98, 5], [139, 36]], group:'me', dash:false, bend:12, from:["Saudi Arabia"], to:["Japan"], label:'Saudi Arabia → Japan', detail:"~13% of Saudi Arabia’s crude exports; ~35% of Japan’s crude imports. Via Hormuz and the Strait of Malacca."},
-  {pts:[[45, 24], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:6, from:["Saudi Arabia"], to:["South Korea"], label:'Saudi Arabia → South Korea', detail:"~10% of Saudi Arabia’s crude exports; ~30% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[45, 24], [56.25, 26.6], [98, 5], [139, 36]], group:'me', dash:false, bend:12, via:['Strait of Malacca'], from:["Saudi Arabia"], to:["Japan"], label:'Saudi Arabia → Japan', detail:"~13% of Saudi Arabia’s crude exports; ~35% of Japan’s crude imports. Via Hormuz and the Strait of Malacca."},
+  {pts:[[45, 24], [56.25, 26.6], [98, 5], [128, 36.5]], group:'me', dash:false, bend:6, via:['Strait of Malacca'], from:["Saudi Arabia"], to:["South Korea"], label:'Saudi Arabia → South Korea', detail:"~10% of Saudi Arabia’s crude exports; ~30% of South Korea’s crude imports. Via Hormuz and the Strait of Malacca."},
   {pts:[[45, 24], [32.3, 30.5], [33, 39.5]], group:'me', dash:false, bend:6, minor:true, from:["Saudi Arabia"], to:["Turkey"], label:'Saudi Arabia → Turkey', detail:"~10% of Turkey’s crude imports. Via the Red Sea and Suez."},
   {pts:[[45, 24], [32.3, 30.5], [-6, 36], [-102, 31]], group:'me', dash:false, bend:-6, minor:true, from:["Saudi Arabia"], to:["United States of America"], label:'Saudi Arabia → USA', detail:"~5% of Saudi Arabia’s crude exports; ~6% of USA’s crude imports. Via Suez and across the Atlantic."},
-  {pts:[[1, 57.5], [-12, 40], [-18, 10], [19, -35], [80, -12], [128, 36.5]], group:'eu', dash:true, bend:6, minor:true, from:["United Kingdom"], to:["South Korea"], label:'UK → South Korea', detail:"~5% of UK’s crude exports. The long way round the Cape of Good Hope."},
+  {pts:[[1, 57.5], [-12, 40], [-18, 10], [19, -35], [80, -12], [128, 36.5]], group:'eu', dash:true, bend:6, minor:true, via:['Strait of Malacca'], from:["United Kingdom"], to:["South Korea"], label:'UK → South Korea', detail:"~5% of UK’s crude exports. The long way round the Cape of Good Hope."},
   {pts:[[1, 57.5], [-102, 31]], group:'eu', dash:false, bend:-18, minor:true, from:["United Kingdom"], to:["United States of America"], label:'UK → USA', detail:"~10% of UK’s crude exports. Across the Atlantic."},
   {pts:[[-102, 31], [-62, 14], [-33, -6], [-43, -23]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["Brazil"], label:'USA → Brazil', detail:"~40% of Brazil’s crude imports. Down the Atlantic coast."},
   {pts:[[-102, 31], [-75, 32], [-72, 46]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Canada"], label:'USA → Canada', detail:"~75.6% of Canada’s crude imports. Up the East Coast to Eastern Canadian refineries."},
@@ -404,9 +436,10 @@ const routes = [
   {pts:[[48, 40.4], [33, 39.5]], group:'aze', dash:true, bend:6, minor:true, from:["Azerbaijan"], to:["Turkey"], label:'Azerbaijan → Turkey', detail:"~10% of Azerbaijan’s crude exports; ~8% of Turkey’s crude imports. BTC pipeline across Georgia into Turkey; feeds SOCAR’s STAR refinery at Aliağa."},
   {pts:[[-66, 8], [15, 48]], group:'ven', dash:false, bend:-16, minor:true, from:["Venezuela"], to:["EU"], label:'Venezuela → EU', detail:"~10% of Venezuela’s crude exports. Across the Atlantic, mainly to Spain."},
   {pts:[[-66, 8], [-20, 0], [19, -35], [78, 21]], group:'ven', dash:false, bend:8, minor:true, from:["Venezuela"], to:["India"], label:'Venezuela → India', detail:"~15% of Venezuela’s crude exports; ~4% of India’s crude imports. Across the Atlantic and round the Cape of Good Hope."},
-  {pts:[[178,32],[128,36.5]], group:'latam', dash:false, bend:6, minor:true, from:["Mexico"], to:["South Korea"], label:'Mexico → South Korea', detail:'Continuation of the Panama Canal route.'},
-  {pts:[[178,32],[139,36]], group:'usa', dash:false, bend:6, minor:true, from:["United States of America"], to:["Japan"], label:'USA → Japan', detail:'~10% of Japan’s crude imports. Continuation of the Panama Canal route.'},
-  {pts:[[178,32],[108,34]], group:'usa', dash:false, bend:10, minor:true, from:["United States of America"], to:["China"], label:'USA → China', detail:'~5% of USA’s crude exports. Continuation of the Panama Canal route.'},
+  {pts:[[178,32],[128,36.5]], group:'latam', dash:false, bend:6, minor:true, via:['Panama Canal'], from:["Mexico"], to:["South Korea"], label:'Mexico → South Korea', detail:'Continuation of the Panama Canal route.'},
+  {pts:[[178,32],[139,36]], group:'usa', dash:false, bend:6, minor:true, via:['Panama Canal'], from:["United States of America"], to:["Japan"], label:'USA → Japan', detail:'~10% of Japan’s crude imports. Continuation of the Panama Canal route.'},
+  {pts:[[178,32],[108,34]], group:'usa', dash:false, bend:10, minor:true, via:['Panama Canal'], from:["United States of America"], to:["China"], label:'USA → China', detail:'~5% of USA’s crude exports. Continuation of the Panama Canal route.'},
+  {pts:[[44, 33], [56.25, 26.6], [59, 21], [55, -10], [18, -34], [-18, 8], [-12, 42], [15, 48]], group:'me', dash:true, bend:6, minor:true, from:["Iraq"], to:["EU"], label:'Iraq → EU (Cape of Good Hope diversion)', detail:'Same Basrah → EU flow: since the Red Sea attacks many tankers avoid Bab-el-Mandeb/Suez and sail round Africa instead.'},
 ];
 
 const destGlow = [
@@ -435,7 +468,7 @@ const projection = d3.geoNaturalEarth1().scale(200).translate([420,270]);
 const path = d3.geoPath(projection);
 const svg = d3.select('#crudeMap').append('svg')
   .attr('viewBox','0 0 960 500')
-  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; applyFocus(); }); // click the sea = reset
+  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; activeChoke = null; applyFocus(); }); // click the sea = reset
 
 svg.append('defs').html(
   '<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
@@ -456,6 +489,8 @@ svg.append('defs').html(
 
 function pt(c){ return projection(c); }
 // Chokepoint diamond of half-size s (in map units) centred on [lon,lat] c.
+// Strategic chokepoint marker style.
+const chokeColor = '#ffd84d', chokeSize = 6.5;
 function diamond(c, s){ const p=pt(c); return `M${p[0]},${p[1]-s}L${p[0]+s},${p[1]}L${p[0]},${p[1]+s}L${p[0]-s},${p[1]}Z`; }
 function routeColor(d){ return d.group ? groupByKey[d.group].color : '#a3a29c'; }
 function curvePath(points, bend){
@@ -514,6 +549,23 @@ function showEuTooltip(event){
 let activeGroup = null;   // null = show all
 let activeRoute = null;   // a single clicked arrow; null = none
 let activeCountry = null; // a countryInfo name or 'EU'; null = none
+let activeChoke = null;   // a clicked chokepoint; null = none
+
+// Routes passing through a chokepoint: a waypoint sits on it, or the route
+// lists it in via[] (for arrows that pass it without a waypoint there).
+function routesThrough(cp){
+  return routes.filter(r => (r.via || []).includes(cp.name) ||
+    r.pts.some(p => Math.abs(p[0]-cp.c[0]) <= 1.1 && Math.abs(p[1]-cp.c[1]) <= 1.1));
+}
+// Click a chokepoint: isolate every arrow through it (minor ones included)
+// and the countries at both ends. Click it again (or the sea) to reset.
+function selectChoke(cp){
+  activeChoke = (activeChoke === cp) ? null : cp;
+  activeCountry = null;
+  activeGroup = null;
+  activeRoute = null;
+  applyFocus();
+}
 
 // Which clickable "entity" a topology country belongs to (EU members → 'EU').
 function entityOf(n){ return euMemberCountries.has(n) ? 'EU' : (countryInfo[n] ? n : null); }
@@ -523,6 +575,7 @@ function selectCountry(e){
   activeCountry = (e && activeCountry !== e) ? e : null;
   activeGroup = null;
   activeRoute = null;
+  activeChoke = null;
   applyFocus();
 }
 
@@ -532,10 +585,28 @@ function selectRoute(r){
   activeRoute = (activeRoute === r) ? null : r;
   activeCountry = null;
   activeGroup = null;
+  activeChoke = null;
   applyFocus();
 }
 
 function applyFocus(){
+  svg.selectAll('.chokepoint-halo, path.chokepoint')
+    .classed('faded', d => activeChoke ? d !== activeChoke : false)
+    .classed('selected', d => d === activeChoke);
+  if (activeChoke){
+    const linked = routesThrough(activeChoke);
+    const keep = new Set();
+    linked.forEach(r => r.from.concat(r.to).forEach(e => keep.add(e)));
+    const ends = new Set(linked.map(r => r.pts[r.pts.length-1].join() + '|' + r.group));
+    svg.selectAll('.country')
+      .classed('faded', d => !keep.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => keep.has(entityOf(d.properties && d.properties.name)));
+    svg.selectAll('.route').classed('faded', d => !linked.includes(d))
+      .style('display', d => (d.minor && !linked.includes(d)) ? 'none' : null);
+    svg.selectAll('.glow').style('opacity', d => ends.has(d.c.join() + '|' + d.group) ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
   if (activeRoute){
     const ends = new Set(activeRoute.from.concat(activeRoute.to));
     svg.selectAll('.country')
@@ -584,13 +655,14 @@ function applyFocus(){
 const legend = d3.select('#crudeLegend');
 const legendHeader = legend.append('div').attr('class','legend-header');
 legendHeader.append('span').attr('class','legend-title').text('OIL TYPE:');
-legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type, a country or a chokepoint to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
 legend.selectAll('.legend-item').data(groups).join('div')
   .attr('class','legend-item')
   .attr('data-key', d=>d.key)
   .on('click', function(event, d){
     activeCountry = null;
     activeRoute = null;
+    activeChoke = null;
     activeGroup = (activeGroup === d.key) ? null : d.key;
     applyFocus();
   })
@@ -612,6 +684,14 @@ lineKey.selectAll('.line-key-row').data([
   .attr('class','line-key-row')
   .html(d => '<svg viewBox="0 0 28 8"><line x1="1" y1="4" x2="27" y2="4" stroke="#a3a29c" stroke-width="1.7"' +
     (d.dash ? ' stroke-dasharray="'+d.dash+'"' : '') + '/></svg><span>' + d.text + '</span>');
+
+// ---- strategic chokepoints key ----
+const chokeKey = legend.append('div').attr('class','line-key');
+chokeKey.append('span').attr('class','legend-title').text('STRATEGIC CHOKEPOINTS (' + chokepoints.length + '):');
+chokeKey.append('div').attr('class','line-key-row')
+  .html('<svg viewBox="0 0 28 16" style="height:16px"><circle cx="14" cy="8" r="7" fill="'+chokeColor+'" fill-opacity="0.12" stroke="'+chokeColor+'" stroke-opacity="0.7"/>' +
+    '<path d="M14,3L19,8L14,13L9,8Z" fill="'+chokeColor+'" stroke="#000"/></svg><span>' +
+    chokepoints.map(d => d.name).join(' · ') + '</span>');
 
 d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
   const countries = topojson.feature(world, world.objects.countries).features;
@@ -685,13 +765,23 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
+  // Strategic chokepoints: halo ring + bright diamond so they stand out.
+  zoomLayer.append('g').selectAll('circle').data(chokepoints).join('circle')
+    .attr('class','chokepoint-halo')
+    .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1]).attr('r',11).attr('data-r',11)
+    .attr('fill',chokeColor).attr('fill-opacity',0.12)
+    .attr('stroke',chokeColor).attr('stroke-width',1).attr('data-sw',1).attr('stroke-opacity',0.7);
   zoomLayer.append('g').selectAll('path').data(chokepoints).join('path')
     .attr('class','chokepoint')
-    .attr('d',d=>diamond(d.c,5))
-    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5).attr('data-sw',0.5)
+    .attr('d',d=>diamond(d.c,chokeSize))
+    .attr('fill',chokeColor).attr('stroke','#000000').attr('stroke-width',1).attr('data-sw',1)
     .on('mouseenter', function(event, d){
-      showTooltip(event, d.name, '#888780', d.detail);
+      const through = routesThrough(d);
+      showTooltip(event, d.name, chokeColor, '<b>Controlled by:</b> ' + d.control + '<br><br>' + d.detail + '<br><br>' + (through.length
+        ? '<b>Flows through it (' + through.length + '):</b><br>' + through.map(r => r.label).join('<br>')
+        : '<i>No crude flow drawn on this map passes here.</i>') + '<br><br><i>Click to isolate.</i>');
     })
+    .on('click', (event, d) => { event.stopPropagation(); selectChoke(d); })
     .on('mousemove', moveTooltip)
     .on('mouseleave', hideTooltip);
 
@@ -708,11 +798,11 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     const p = pt(d.c);
     zoomLayer.append('text').datum({x:p[0], y:p[1], dx:d.dx ?? 8, dy:d.dy})
       .attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
-      .attr('font-size',11).attr('fill',labelFill).text(d.name);
+      .attr('font-size',11).attr('fill',d.fill ?? labelFill).attr('font-weight',d.weight ?? null).text(d.name);
   }
   originLabels.forEach(label);
   destLabels.forEach(label);
-  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10, fill: chokeColor, weight: 700}));
 
   // ---- zoom & pan: the map magnifies, but arrows, markers and labels keep
   //      their on-screen size (line widths via the --k CSS variable). ----
@@ -724,7 +814,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
       svg.style('--k', k);
       zoomLayer.selectAll('.glow').attr('r', 20/k);
       svg.selectAll('defs pattern').attr('patternTransform', 'rotate(45) scale(' + 1/k + ')'); // hatch stripes keep their width
-      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, 5/k));
+      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, chokeSize/k));
       zoomLayer.selectAll('[data-r]').attr('r', function(){ return this.dataset.r/k; });
       zoomLayer.selectAll('[data-sw]').attr('stroke-width', function(){ return this.dataset.sw/k; });
       zoomLayer.selectAll('.label-text')
@@ -866,11 +956,14 @@ const euMemberCountries = new Set([
 ]);
 
 const chokepoints = [
-  {name:'Strait of Hormuz', c:[56.25,26.6], detail:'Everything leaving the Gulf refiners (Al-Zour, Ruwais, SATORP).'},
-  {name:'Bab-el-Mandeb', c:[43.4,12.6], dy:4, dx:-86, detail:'Red Sea entrance — Gulf and Indian diesel heading for Suez and Europe.'},
-  {name:'Suez Canal', c:[32.3,30.5], detail:'India and the Gulf shipping diesel into the EU; Russian products heading east.'},
-  {name:'Strait of Malacca', c:[100.5,3.5], detail:'The gateway to the Singapore hub and all of East Asia.'},
-  {name:'Panama Canal', c:[-79.5,9.0], detail:'US Gulf Coast products heading to Pacific Latin America.'}
+  {name:'Strait of Hormuz', control:'Iran (north shore) and Oman (Musandam, south shore) — the shipping lanes run through Omani waters.', c:[56.25,26.6], detail:'Everything leaving the Gulf refiners (Al-Zour, Ruwais, SATORP).'},
+  {name:'Bab-el-Mandeb', control:'Yemen (east shore) and Djibouti (west shore), with Eritrea nearby. Houthi forces on Yemen’s Red Sea coast have attacked shipping since late 2023.', c:[43.4,12.6], dy:4, dx:-100, detail:'Red Sea entrance — Gulf and Indian diesel heading for Suez and Europe.'},
+  {name:'Suez Canal', control:'Egypt — run by the Suez Canal Authority.', c:[32.3,30.5], detail:'India and the Gulf shipping diesel into the EU; Russian products heading east.'},
+  {name:'Strait of Malacca', control:'Malaysia, Indonesia and Singapore, which patrol it jointly.', c:[100.5,3.5], detail:'The gateway to the Singapore hub and all of East Asia.'},
+  {name:'Panama Canal', control:'Panama — run by the Panama Canal Authority since the 1999 US handover.', c:[-79.5,9.0], detail:'US Gulf Coast products heading to Pacific Latin America.'},
+  {name:'Cape of Good Hope', control:'South Africa holds the coast, but ships sail in open ocean — no country can close it.', c:[18,-34.4], dy:14, detail:'The long way round Africa — the fallback when Suez / Bab-el-Mandeb are closed or too risky.'},
+  {name:'Danish Straits', control:'Denmark (and Sweden on the Øresund). Free passage is guaranteed by the 1857 Copenhagen Convention.', c:[11,56], dy:-4, dx:-92, detail:'Baltic exit — every Russian product cargo loaded at Primorsk and Ust-Luga passes here.'},
+  {name:'Turkish Straits', control:'Turkey — passage is governed by the 1936 Montreux Convention.', c:[29,41.1], dy:16, dx:-100, detail:'Bosphorus and Dardanelles — Russian Black Sea diesel heading into the Mediterranean.'}
 ];
 
 const originLabels = [
@@ -879,9 +972,9 @@ const originLabels = [
   {name:'Russia (Baltic)', c:[29,60], dy:-8},
   {name:'Russia (Black Sea)', c:[37.8,44.7], dy:-6},
   {name:'Saudi Arabia', c:[45,23.5], dy:4, dx:-40},
-  {name:'Kuwait', c:[47.7,29.3], dy:2, dx:-50},
+  {name:'Kuwait', c:[47.7,29.3], dy:12, dx:-30},
   {name:'UAE', c:[54,23.5], dy:6, dx:12},
-  {name:'Netherlands (ARA)', c:[5.5,52.3], dy:-6, dx:8},
+  {name:'Netherlands (ARA)', c:[5.5,52.3], dy:6, dx:8},
   {name:'Belgium (ARA)', c:[4.5,50.6], dy:10, dx:-78},
   {name:'South Korea', c:[128.5,35.5], dy:-8},
   {name:'China', c:[114,23], dy:-6},
@@ -920,19 +1013,19 @@ const routes = [
   {pts:[[-95,29.5],[-6,36],[35,32.8]], group:'usa', dash:false, bend:-10, from:["United States of America"], to:["Israel"], label:'USA → Israel (JP-8)', detail:'~10% of Israel’s refined imports — the sole supplier of JP-8 military jet fuel. Across the Atlantic, through Gibraltar and the Mediterranean.'},
   {pts:[[-95,29.5],[15,48]], group:'usa', dash:false, bend:-30, from:["United States of America"], to:["EU"], label:'USA → EU', detail:'~12% of US refined exports; the EU’s top product supplier (~22%).'},
   // India
-  {pts:[[70,22.3],[43.4,12.6],[32.3,30.5],[15,48]], group:'ind', dash:false, bend:8, from:["India"], to:["EU"], label:'India → EU (via Suez)', detail:'~25% of India’s product exports. India replaced much of the lost Russian diesel after the 2023 embargo.'},
+  {pts:[[70,22.3],[43.4,12.6],[32.3,30.5],[15,48]], group:'ind', dash:false, bend:8, from:["India"], to:["EU"], label:'India → EU (via Suez)', detail:'~25% of India’s product exports. India replaced much of the lost Russian diesel after the 2023 embargo. The short route — since the Red Sea attacks most cargoes go round the Cape instead (dotted arrow).'},
   {pts:[[70,22.3],[39.5,-5]], group:'ind', dash:false, bend:10, from:["India"], to:[], label:'India → East Africa', detail:'Part of the ~18% going to Africa.'},
-  {pts:[[70,22.3],[103.8,1.35]], group:'ind', dash:false, bend:12, from:["India"], to:["Singapore"], label:'India → Singapore', detail:'~12% — feeds the Singapore blending/trading hub.'},
+  {pts:[[70,22.3],[103.8,1.35]], group:'ind', dash:false, bend:12, via:['Strait of Malacca'], from:["India"], to:["Singapore"], label:'India → Singapore', detail:'~12% — feeds the Singapore blending/trading hub.'},
   {pts:[[70,22.3],[151,-33.9]], group:'ind', dash:false, bend:-18, from:["India"], to:["Australia"], label:'India → Australia', detail:'~8% of India’s product exports.'},
   // Russia
-  {pts:[[37.8,44.7],[32,39.5]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Turkey"], label:'Russia → Turkey (Black Sea)', detail:'~25% — Turkey became Russia’s largest diesel buyer after the EU embargo.'},
-  {pts:[[29,60],[3.4,6.4]], group:'rus', dash:false, bend:22, from:["Russia"], to:["Nigeria"], label:'Russia → West Africa (Baltic)', detail:'Part of the ~22% going to Africa.'},
-  {pts:[[29,60],[-45,-20]], group:'rus', dash:false, bend:30, from:["Russia"], to:["Brazil"], label:'Russia → Brazil (Baltic)', detail:'~12% — Brazil became a major Russian diesel buyer post-2022.'},
-  {pts:[[37.8,44.7],[32.3,30.5],[43.4,12.6],[51,13.5],[59,21],[56.3,25.1]], group:'rus', dash:true, bend:4, from:["Russia"], to:["United Arab Emirates"], label:'Russia → UAE (Fujairah blending)', detail:'Discounted Russian fuel oil blended in Fujairah and re-exported — ~35% of UAE product imports.'},
+  {pts:[[37.8,44.7],[32,39.5]], group:'rus', dash:false, bend:4, via:['Turkish Straits'], from:["Russia"], to:["Turkey"], label:'Russia → Turkey (Black Sea)', detail:'~25% — Turkey became Russia’s largest diesel buyer after the EU embargo.'},
+  {pts:[[29,60],[11,56],[3,54],[-8,47],[-20,20],[3.4,6.4]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Nigeria"], label:'Russia → West Africa (Baltic)', detail:'Part of the ~22% going to Africa.'},
+  {pts:[[29,60],[11,56],[3,54],[-8,47],[-45,-20]], group:'rus', dash:false, bend:6, from:["Russia"], to:["Brazil"], label:'Russia → Brazil (Baltic)', detail:'~12% — Brazil became a major Russian diesel buyer post-2022.'},
+  {pts:[[37.8,44.7],[32.3,30.5],[43.4,12.6],[51,13.5],[59,21],[56.3,25.1]], group:'rus', dash:true, bend:4, via:['Turkish Straits'], from:["Russia"], to:["United Arab Emirates"], label:'Russia → UAE (Fujairah blending)', detail:'Discounted Russian fuel oil blended in Fujairah and re-exported — ~35% of UAE product imports.'},
   {pts:[[37.8,44.7],[29,41.1],[26,37],[35,32.8]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Israel"], label:'Russia → Israel (Black Sea)', detail:'~50% of Israel’s refined imports (Nov 2023–Oct 2025, Oil Change International) — diesel and gasoil through the Turkish Straits and across the Mediterranean. ~1% of Russia’s product exports.'},
   {pts:[[32,39.5],[15,48]], group:'rus', dash:true, bend:6, from:["Turkey", "Russia"], to:["EU"], label:'Turkey → EU (Russian-origin re-exports)', detail:'Indirect route back into Europe — Turkish re-exports are ~6% of EU product imports.'},
   // Gulf refiners
-  {pts:[[48,28.5],[56.25,26.6],[59,21],[51,13.5],[43.4,12.6],[32.3,30.5],[15,48]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["EU"], label:'Gulf refiners → EU (Hormuz, Bab-el-Mandeb, Suez)', detail:'Saudi Arabia 12%, UAE 9%, Kuwait 7% of EU product imports. Al-Zour output is largely aimed at Europe.'},
+  {pts:[[48,28.5],[56.25,26.6],[59,21],[51,13.5],[43.4,12.6],[32.3,30.5],[15,48]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["EU"], label:'Gulf refiners → EU (Hormuz, Bab-el-Mandeb, Suez)', detail:'Saudi Arabia 12%, UAE 9%, Kuwait 7% of EU product imports. Al-Zour output is largely aimed at Europe. The short route — since the Red Sea attacks most cargoes go round the Cape instead (dotted arrow).'},
   {pts:[[48,28.5],[56.25,26.6],[59,21],[39.5,-5]], group:'gulf', dash:false, bend:4, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:[], label:'Gulf refiners → East Africa', detail:'Saudi Arabia ~12%, UAE ~18% of their product exports.'},
   {pts:[[48,28.5],[56.25,26.6],[100.5,3.5],[139,35.5]], group:'gulf', dash:false, bend:10, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["Singapore", "China", "Japan", "South Korea"], label:'Gulf refiners → Asia (via Malacca)', detail:'Singapore, China, Japan and South Korea — the Gulf’s largest outlet (~30% of Singapore’s imports).'},
   // Singapore
@@ -951,7 +1044,19 @@ const routes = [
   // China
   {pts:[[114,23],[103.8,1.35]], group:'chn', dash:false, bend:-10, from:["China"], to:["Singapore"], label:'China → Singapore', detail:'~25% of China’s product exports, when export quotas allow.'},
   {pts:[[114,23],[121,14.6]], group:'chn', dash:false, bend:6, from:["China"], to:["Philippines"], label:'China → Philippines', detail:'~12% of China’s product exports.'},
-  {pts:[[114,23],[151,-33.9]], group:'chn', dash:false, bend:-24, from:["China"], to:["Australia"], label:'China → Australia', detail:'~12% of China’s product exports.'}
+  {pts:[[114,23],[151,-33.9]], group:'chn', dash:false, bend:-24, from:["China"], to:["Australia"], label:'China → Australia', detail:'~12% of China’s product exports.'},
+  // ---- chokepoint coverage (2026-09-24): Cape diversions and flows from the data that had no arrow ----
+  {pts:[[70,22.3],[62,-12],[18,-34.4],[-16,8],[-12,42],[15,48]], group:'ind', dash:true, bend:6, from:["India"], to:["EU"], label:'India → EU (Cape of Good Hope diversion)', detail:'Same ~25% India → EU flow: since the Red Sea attacks (late 2023) most diesel and jet cargoes avoid Bab-el-Mandeb/Suez and sail round Africa — ~2 extra weeks.'},
+  {pts:[[48,28.5],[56.25,26.6],[59,21],[52,-10],[18,-34.4],[-20,8],[-14,42],[15,48]], group:'gulf', dash:true, bend:6, from:["Saudi Arabia", "Kuwait", "United Arab Emirates"], to:["EU"], label:'Gulf refiners → EU (Cape of Good Hope diversion)', detail:'Same Gulf → EU flow (Saudi 12%, UAE 9%, Kuwait 7% of EU imports) re-routed round Africa to avoid the Red Sea.'},
+  {pts:[[70,22.3],[62,-12],[18,-34.4],[-45,-20]], group:'ind', dash:false, bend:8, from:["India"], to:["Brazil"], label:'India → Brazil (Cape of Good Hope)', detail:'~12% of Brazil’s product imports — diesel round the Cape.'},
+  {pts:[[70,22.3],[62,-12],[18,-34.4],[3.4,6.4]], group:'ind', dash:false, bend:8, from:["India"], to:["Nigeria"], label:'India → West Africa (Cape of Good Hope)', detail:'~10% of Nigeria’s product imports; part of India’s ~18% going to Africa.'},
+  {pts:[[70,22.3],[62,-12],[18,-34.4],[-30,5],[-74,40.5]], group:'ind', dash:false, bend:8, from:["India"], to:["United States of America"], label:'India → US East Coast (Cape of Good Hope)', detail:'~7% of India’s product exports (~6% of US product imports).'},
+  {pts:[[-95,29.5],[-79.5,9],[-178,32]], group:'usa', dash:false, bend:6, from:["United States of America"], to:["South Korea", "China"], label:'USA → Asia (Panama Canal)', detail:'~10% of US product exports — Gulf Coast cargoes across the Pacific (~30% of South Korea’s and ~15% of China’s product imports).'},
+  {pts:[[178,32],[128.5,35.5]], group:'usa', dash:false, bend:6, via:['Panama Canal'], from:["United States of America"], to:["South Korea"], label:'USA → South Korea (via Panama)', detail:'~30% of South Korea’s product imports (continues the Panama route across the Pacific).'},
+  {pts:[[178,32],[114,23]], group:'usa', dash:false, bend:10, via:['Panama Canal'], from:["United States of America"], to:["China"], label:'USA → China (via Panama)', detail:'~15% of China’s product imports (continues the Panama route across the Pacific).'},
+  {pts:[[70,22.3],[100.5,3.5],[106.8,-6.2]], group:'ind', dash:false, bend:6, from:["India"], to:["Indonesia"], label:'India → Indonesia (Malacca)', detail:'~12% of Indonesia’s product imports.'},
+  {pts:[[48,28.5],[56.25,26.6],[70,22.3]], group:'gulf', dash:false, bend:6, from:["Saudi Arabia", "United Arab Emirates"], to:["India"], label:'Gulf refiners → India (Hormuz)', detail:'UAE ~30% and Saudi Arabia ~25% of India’s product imports (LPG, fuel oil).'},
+  {pts:[[37.8,44.7],[29,41.1],[26,37],[32.3,30.5],[43.4,12.6],[51,13.5],[80,6],[100.5,3.5],[103.8,1.35]], group:'rus', dash:false, bend:4, from:["Russia"], to:["Singapore"], label:'Russia → Singapore (Turkish Straits, Suez, Malacca)', detail:'~10% of Singapore’s product imports; part of Russia’s ~20% going to Asia. Black Sea fuel oil and diesel through every chokepoint on the way east.'},
 ];
 
 const destGlow = [
@@ -963,6 +1068,8 @@ const destGlow = [
   {c:[39.5,-5], group:'ind'},{c:[39.5,-5], group:'gulf'},
   {c:[103.8,1.35], group:'ind'},{c:[103.8,1.35], group:'chn'},
   {c:[151,-33.9], group:'ind'},{c:[151,-33.9], group:'sgp'},{c:[151,-33.9], group:'kor'},{c:[151,-33.9], group:'chn'},
+  {c:[-45,-20], group:'ind'},{c:[3.4,6.4], group:'ind'},{c:[-74,40.5], group:'ind'},{c:[106.8,-6.2], group:'ind'},
+  {c:[128.5,35.5], group:'usa'},{c:[114,23], group:'usa'},{c:[70,22.3], group:'gulf'},{c:[103.8,1.35], group:'rus'},
   {c:[106.8,-6.2], group:'sgp'},{c:[106.7,10.8], group:'sgp'},{c:[106.7,10.8], group:'kor'},
   {c:[139,35.5], group:'gulf'},{c:[139,35.5], group:'kor'},
   {c:[-1,52.5], group:'ara'},{c:[-74,40.5], group:'ara'},{c:[121,14.6], group:'chn'}
@@ -987,7 +1094,7 @@ const projection = d3.geoNaturalEarth1().scale(200).translate([420,270]);
 const path = d3.geoPath(projection);
 const svg = d3.select('#refinedMap').append('svg')
   .attr('viewBox','0 0 960 500')
-  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; applyFocus(); }); // click the sea = reset
+  .on('click', () => { activeRoute = null; activeCountry = null; activeGroup = null; activeChoke = null; applyFocus(); }); // click the sea = reset
 
 svg.append('defs').html(
   '<marker id="refined-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
@@ -996,6 +1103,8 @@ svg.append('defs').html(
 
 function pt(c){ return projection(c); }
 // Chokepoint diamond of half-size s (in map units) centred on [lon,lat] c.
+// Strategic chokepoint marker style.
+const chokeColor = '#ffd84d', chokeSize = 6.5;
 function diamond(c, s){ const p=pt(c); return `M${p[0]},${p[1]-s}L${p[0]+s},${p[1]}L${p[0]},${p[1]+s}L${p[0]-s},${p[1]}Z`; }
 function curvePath(points, bend){
   const p = points.map(pt);
@@ -1057,6 +1166,23 @@ function showEuTooltip(event){
 let activeGroup = null;   // null = show all
 let activeRoute = null;   // a single clicked arrow; null = none
 let activeCountry = null; // a countryInfo name, 'EU' or 'Singapore'; null = none
+let activeChoke = null;   // a clicked chokepoint; null = none
+
+// Routes passing through a chokepoint: a waypoint sits on it, or the route
+// lists it in via[] (for arrows that pass it without a waypoint there).
+function routesThrough(cp){
+  return routes.filter(r => (r.via || []).includes(cp.name) ||
+    r.pts.some(p => Math.abs(p[0]-cp.c[0]) < 0.5 && Math.abs(p[1]-cp.c[1]) < 0.5));
+}
+// Click a chokepoint: isolate every arrow through it and the countries at
+// both ends. Click it again (or the sea) to reset.
+function selectChoke(cp){
+  activeChoke = (activeChoke === cp) ? null : cp;
+  activeCountry = null;
+  activeGroup = null;
+  activeRoute = null;
+  applyFocus();
+}
 
 // Which clickable "entity" a topology country belongs to (EU members → 'EU').
 function entityOf(n){ return euMemberCountries.has(n) ? 'EU' : (countryInfo[n] ? n : null); }
@@ -1066,6 +1192,7 @@ function selectCountry(e){
   activeCountry = (e && activeCountry !== e) ? e : null;
   activeGroup = null;
   activeRoute = null;
+  activeChoke = null;
   applyFocus();
 }
 
@@ -1075,10 +1202,27 @@ function selectRoute(r){
   activeRoute = (activeRoute === r) ? null : r;
   activeCountry = null;
   activeGroup = null;
+  activeChoke = null;
   applyFocus();
 }
 
 function applyFocus(){
+  svg.selectAll('.chokepoint-halo, path.chokepoint')
+    .classed('faded', d => activeChoke ? d !== activeChoke : false)
+    .classed('selected', d => d === activeChoke);
+  if (activeChoke){
+    const linked = routesThrough(activeChoke);
+    const keep = new Set();
+    linked.forEach(r => r.from.concat(r.to).forEach(e => keep.add(e)));
+    const ends = new Set(linked.map(r => r.pts[r.pts.length-1].join() + '|' + r.group));
+    svg.selectAll('.country')
+      .classed('faded', d => !keep.has(entityOf(d.properties && d.properties.name)))
+      .classed('selected', d => keep.has(entityOf(d.properties && d.properties.name)));
+    svg.selectAll('.route').classed('faded', d => !linked.includes(d));
+    svg.selectAll('.glow').style('opacity', d => ends.has(d.c.join() + '|' + d.group) ? 0.3 : 0);
+    legend.selectAll('.legend-item').classed('dimmed', false);
+    return;
+  }
   if (activeRoute){
     const ends = new Set(activeRoute.from.concat(activeRoute.to));
     svg.selectAll('.country')
@@ -1122,13 +1266,14 @@ function applyFocus(){
 const legend = d3.select('#refinedLegend');
 const legendHeader = legend.append('div').attr('class','legend-header');
 legendHeader.append('span').attr('class','legend-title').text('EXPORTER / HUB:');
-legendHeader.append('span').attr('class','legend-hint').text('Click a type or a country to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
+legendHeader.append('span').attr('class','legend-hint').text('Click a type, a country or a chokepoint to isolate it on the map. Scroll or pinch to zoom, drag to pan.');
 legend.selectAll('.legend-item').data(groups).join('div')
   .attr('class','legend-item')
   .attr('data-key', d=>d.key)
   .on('click', function(event, d){
     activeCountry = null;
     activeRoute = null;
+    activeChoke = null;
     activeGroup = (activeGroup === d.key) ? null : d.key;
     applyFocus();
   })
@@ -1144,6 +1289,14 @@ lineKey.selectAll('.line-key-row').data([
   .attr('class','line-key-row')
   .html(d => '<svg viewBox="0 0 28 8"><line x1="1" y1="4" x2="27" y2="4" stroke="#a3a29c" stroke-width="1.7"' +
     (d.dash ? ' stroke-dasharray="'+d.dash+'"' : '') + '/></svg><span>' + d.text + '</span>');
+
+// ---- strategic chokepoints key ----
+const chokeKey = legend.append('div').attr('class','line-key');
+chokeKey.append('span').attr('class','legend-title').text('STRATEGIC CHOKEPOINTS (' + chokepoints.length + '):');
+chokeKey.append('div').attr('class','line-key-row')
+  .html('<svg viewBox="0 0 28 16" style="height:16px"><circle cx="14" cy="8" r="7" fill="'+chokeColor+'" fill-opacity="0.12" stroke="'+chokeColor+'" stroke-opacity="0.7"/>' +
+    '<path d="M14,3L19,8L14,13L9,8Z" fill="'+chokeColor+'" stroke="#000"/></svg><span>' +
+    chokepoints.map(d => d.name).join(' · ') + '</span>');
 
 d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
   const countries = topojson.feature(world, world.objects.countries).features;
@@ -1196,11 +1349,23 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     .on('mousemove', moveTooltip)
     .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
 
+  // Strategic chokepoints: halo ring + bright diamond so they stand out.
+  zoomLayer.append('g').selectAll('circle').data(chokepoints).join('circle')
+    .attr('class','chokepoint-halo')
+    .attr('cx',d=>pt(d.c)[0]).attr('cy',d=>pt(d.c)[1]).attr('r',11).attr('data-r',11)
+    .attr('fill',chokeColor).attr('fill-opacity',0.12)
+    .attr('stroke',chokeColor).attr('stroke-width',1).attr('data-sw',1).attr('stroke-opacity',0.7);
   zoomLayer.append('g').selectAll('path').data(chokepoints).join('path')
     .attr('class','chokepoint')
-    .attr('d',d=>diamond(d.c,5))
-    .attr('fill','#888780').attr('stroke','#2c2c2a').attr('stroke-width',0.5).attr('data-sw',0.5)
-    .on('mouseenter', function(event, d){ showTooltip(event, d.name, '#888780', d.detail); })
+    .attr('d',d=>diamond(d.c,chokeSize))
+    .attr('fill',chokeColor).attr('stroke','#000000').attr('stroke-width',1).attr('data-sw',1)
+    .on('mouseenter', function(event, d){
+      const through = routesThrough(d);
+      showTooltip(event, d.name, chokeColor, '<b>Controlled by:</b> ' + d.control + '<br><br>' + d.detail + '<br><br>' + (through.length
+        ? '<b>Flows through it (' + through.length + '):</b><br>' + through.map(r => r.label).join('<br>')
+        : '<i>No refined flow drawn on this map passes here.</i>') + '<br><br><i>Click to isolate.</i>');
+    })
+    .on('click', (event, d) => { event.stopPropagation(); selectChoke(d); })
     .on('mousemove', moveTooltip)
     .on('mouseleave', hideTooltip);
 
@@ -1228,11 +1393,11 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
     const p = pt(d.c);
     zoomLayer.append('text').datum({x:p[0], y:p[1], dx:d.dx ?? 8, dy:d.dy})
       .attr('class','label-text').attr('x',p[0]+(d.dx ?? 8)).attr('y',p[1]+d.dy)
-      .attr('font-size',11).attr('fill',labelFill).text(d.name);
+      .attr('font-size',11).attr('fill',d.fill ?? labelFill).attr('font-weight',d.weight ?? null).text(d.name);
   }
   originLabels.forEach(label);
   destLabels.forEach(label);
-  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10}));
+  chokepoints.forEach(d=>label({...d, dy: d.dy ?? -10, fill: chokeColor, weight: 700}));
 
   // ---- zoom & pan: the map magnifies, but arrows, markers and labels keep
   //      their on-screen size (line widths via the --k CSS variable). ----
@@ -1243,7 +1408,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
       zoomLayer.attr('transform', transform);
       svg.style('--k', k);
       zoomLayer.selectAll('.glow').attr('r', 16/k);
-      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, 5/k));
+      zoomLayer.selectAll('path.chokepoint').attr('d', d => diamond(d.c, chokeSize/k));
       zoomLayer.selectAll('[data-r]').attr('r', function(){ return this.dataset.r/k; });
       zoomLayer.selectAll('[data-sw]').attr('stroke-width', function(){ return this.dataset.sw/k; });
       zoomLayer.selectAll('.label-text')
@@ -1260,5 +1425,433 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
 });
 })(); // end REFINED
 </script>
+<script>
+/* ############################################################
+   FIELDS — self-contained: own data, own rendering, own state.
+   Shares nothing with CRUDE or REFINED (separate IIFE, own SVG, own
+   legend). Tracks WHO owns / controls the world's giant oil fields: one
+   color per company; the Seven Sisters' successors (ExxonMobil, Chevron,
+   BP, Shell) keep their classic colors.
+   ############################################################ */
+(function(){
+/* ============================================================
+   DATA — see fields.xlsx for every field, stake and note.
+   kbd = crude + condensate output, thousand barrels/day (~2025 est.).
+   owner = the company the field "belongs to" on the map (its color):
+     a Seven Sisters successor if one is involved at all — operator,
+     subsidiary or stake (user rule; operator first, else biggest stake),
+     otherwise the operator / controlling company.
+   partners = [company, equity %]; % null = not published / uncertain.
+   ============================================================ */
+
+// Every owner company: name, home-country flag + nationality, who owns it,
+// map color (unique per company), and Seven Sisters lineage where relevant.
+const companies = {
+  exxon:          {name:'ExxonMobil', flag:'🇺🇸', nat:'American', own:'Private — publicly traded (NYSE).', color:'#e34948',
+                   sister:'Standard Oil of New Jersey (Esso → Exxon) + Standard Oil Co. of New York (Socony → Mobil), merged 1999'},
+  chevron:        {name:'Chevron', flag:'🇺🇸', nat:'American', own:'Private — publicly traded (NYSE).', color:'#2a78d6',
+                   sister:'Standard Oil of California (Socal) + Gulf Oil (bought 1984) + Texaco (merged 2001)'},
+  bp:             {name:'BP', flag:'🇬🇧', nat:'British', own:'Private — publicly traded (London).', color:'#3fa34d',
+                   sister:'Anglo-Persian Oil Company (later Anglo-Iranian)'},
+  shell:          {name:'Shell', flag:'🇬🇧', nat:'British (Anglo-Dutch until 2022)', own:'Private — publicly traded (London).', color:'#eda100',
+                   sister:'Royal Dutch Shell — the only Sister never merged away'},
+  aramco:         {name:'Saudi Aramco', flag:'🇸🇦', nat:'Saudi', own:'State-owned — the Saudi government and its PIF fund hold ~98%; ~2% listed (2019).', aka:["Saudi Aramco"], color:'#1fb5a8'},
+  koc:            {name:'Kuwait Oil Company', flag:'🇰🇼', nat:'Kuwaiti', own:'State-owned — subsidiary of Kuwait Petroleum Corporation (100% state).', label:'KOC (Kuwait)', aka:["Kuwait Oil Company", "KGOC", "Kuwait Gulf Oil"], color:'#f48fb1'},
+  nioc:           {name:'NIOC', flag:'🇮🇷', nat:'Iranian', own:'State-owned — 100% Iranian state (National Iranian Oil Company).', aka:["NIOC"], color:'#a66bd6'},
+  adnoc:          {name:'ADNOC', flag:'🇦🇪', nat:'Emirati', own:'State-owned — 100% Abu Dhabi government.', aka:["ADNOC"], color:'#7cc8f2'},
+  qatarenergy:    {name:'QatarEnergy', flag:'🇶🇦', nat:'Qatari', own:'State-owned — 100% Qatari state.', aka:["QatarEnergy"], color:'#d6457a'},
+  basra:          {name:'Basra Oil Company', flag:'🇮🇶', nat:'Iraqi', own:'State-owned — Iraqi Ministry of Oil.', label:'Basra Oil Co.', aka:["Basra Oil"], color:'#b5d95a'},
+  petrochina:     {name:'PetroChina', flag:'🇨🇳', nat:'Chinese', own:'State-controlled — majority owned by CNPC (Chinese state); listed in Hong Kong and Shanghai.', aka:["PetroChina", "CNPC", "CNODC"], color:'#ff7a3d'},
+  sinopec:        {name:'Sinopec', flag:'🇨🇳', nat:'Chinese', own:'State-controlled — majority owned by Sinopec Group (Chinese state).', aka:["Sinopec"], color:'#ffe27a'},
+  cnooc:          {name:'CNOOC', flag:'🇨🇳', nat:'Chinese', own:'State-controlled — majority owned by the CNOOC group (Chinese state).', aka:["CNOOC"], color:'#43c6db'},
+  lukoil:         {name:'Lukoil', flag:'🇷🇺', nat:'Russian', own:'Private — Russia’s largest non-state oil company.', aka:["Lukoil", "LukArco"], color:'#b08968'},
+  eni:            {name:'Eni', flag:'🇮🇹', nat:'Italian', own:'Partly state-owned — the Italian state holds ~30% (Treasury + CDP).', aka:["Eni", "Vår Energi"], color:'#e040fb',
+                   rival:'Never a Sister — the challenger: its founder Enrico Mattei coined the name “Seven Sisters” in the 1950s'},
+  rosneft:        {name:'Rosneft', flag:'🇷🇺', nat:'Russian', own:'State-controlled — the Russian state (via Rosneftegaz) is the largest shareholder.', aka:["Rosneft"], color:'#ff9e9e'},
+  tatneft:        {name:'Tatneft', flag:'🇷🇺', nat:'Russian', own:'Controlled by the Tatarstan regional government (~36% + golden share).', aka:["Tatneft"], color:'#c3a6ff'},
+  equinor:        {name:'Equinor', flag:'🇳🇴', nat:'Norwegian', own:'Majority state-owned — the Norwegian state holds 67%.', aka:["Equinor"], color:'#ff5c8a'},
+  conocophillips: {name:'ConocoPhillips', flag:'🇺🇸', nat:'American', own:'Private — publicly traded (NYSE).', aka:["ConocoPhillips"], color:'#9aa5b1'},
+  totalenergies:  {name:'TotalEnergies', flag:'🇫🇷', nat:'French', own:'Private — publicly traded (Paris).', aka:["TotalEnergies"], color:'#8c6cff'},
+  renaissance:    {name:'Renaissance Africa Energy', flag:'🇳🇬', nat:'Nigerian', own:'Private — consortium of Nigerian independent oil companies.', label:'Renaissance', aka:["Renaissance"], color:'#00c2ff'},
+  noclibya:       {name:'National Oil Corporation (Libya)', flag:'🇱🇾', nat:'Libyan', own:'State-owned — 100% Libyan state.', label:'NOC Libya', aka:["NOC Libya", "NOC", "Waha Oil", "AGOCO", "Akakus"], color:'#c7ea46'},
+  sonatrach:      {name:'Sonatrach', flag:'🇩🇿', nat:'Algerian', own:'State-owned — 100% Algerian state.', aka:["Sonatrach"], color:'#7ee8c8'},
+  eog:            {name:'EOG Resources', flag:'🇺🇸', nat:'American', own:'Private — publicly traded (NYSE).', label:'EOG', aka:["EOG"], color:'#d4a373'},
+  pemex:          {name:'Pemex', flag:'🇲🇽', nat:'Mexican', own:'State-owned — 100% Mexican state.', aka:["Pemex"], color:'#06d6a0'},
+  petrobras:      {name:'Petrobras', flag:'🇧🇷', nat:'Brazilian', own:'State-controlled — the Brazilian government holds ~50% of voting shares.', aka:["Petrobras"], color:'#9ef01a'},
+  ongc:           {name:'ONGC', flag:'🇮🇳', nat:'Indian', own:'State-controlled — the Indian government holds ~59%.', aka:["ONGC"], color:'#ffadad'},
+  pertamina:      {name:'Pertamina', flag:'🇮🇩', nat:'Indonesian', own:'State-owned — 100% Indonesian state.', aka:["Pertamina"], color:'#e76f51'}
+};
+// First word of a company name → Sister successor ('Aker BP' and 'BPRL' are not BP).
+const sisterWord = {ExxonMobil:'exxon', Imperial:'exxon', Esso:'exxon', Chevron:'chevron', BP:'bp', Shell:'shell', Azule:'bp'};
+function sisterOf(co){ return sisterWord[co.split(/[\s(]/)[0]] || null; }
+
+const fields = [
+  {name:"Ghawar", owner:"aramco", country:"Saudi Arabia", c:[49.3, 25.3], kbd:3800, disc:1948, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", note:"The largest conventional oil field on Earth.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Khurais", owner:"aramco", country:"Saudi Arabia", c:[48.1, 25.1], kbd:1500, disc:1957, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Safaniya", owner:"aramco", country:"Saudi Arabia", c:[48.8, 28.0], kbd:1200, disc:1951, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", note:"The largest offshore oil field in the world.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Shaybah", owner:"aramco", country:"Saudi Arabia", c:[54.0, 22.5], kbd:1000, disc:1968, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", note:"Deep in the Empty Quarter.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Manifa", owner:"aramco", country:"Saudi Arabia", c:[49.1, 27.6], kbd:900, disc:1957, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Zuluf", owner:"aramco", country:"Saudi Arabia", c:[49.4, 28.4], kbd:800, disc:1965, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Marjan", owner:"aramco", country:"Saudi Arabia", c:[50.0, 28.4], kbd:500, disc:1967, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Abqaiq", owner:"aramco", country:"Saudi Arabia", c:[49.7, 25.9], kbd:400, disc:1940, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Berri", owner:"aramco", country:"Saudi Arabia", c:[49.7, 27.1], kbd:300, disc:1964, op:"Saudi Aramco", opType:"noc", opSis:null, partners:[["Saudi Aramco", 100]], contract:"No concession — 100% state-owned since 1980.", hist:"Aramco began as a 1933 Socal (Chevron) concession; Texaco, Esso and Mobil (ExxonMobil) joined. Saudi Arabia bought it out 1973–1980."},
+  {name:"Greater Burgan", owner:"koc", country:"Kuwait", c:[47.95, 28.95], kbd:1700, disc:1938, op:"Kuwait Oil Company (KPC)", opType:"noc", opSis:null, partners:[["Kuwait Oil Company", 100]], contract:"No concession — nationalized 1975–76.", note:"The second-largest oil field in the world.", hist:"The 1934 Kuwait Oil Company concession was a 50/50 joint venture of Gulf Oil (Chevron) and Anglo-Persian (BP)."},
+  {name:"Raudhatain–Sabriya", owner:"koc", country:"Kuwait", c:[47.7, 29.85], kbd:500, disc:1955, op:"Kuwait Oil Company (KPC)", opType:"noc", opSis:null, partners:[["Kuwait Oil Company", 100]], contract:"No concession — nationalized 1975–76.", hist:"The 1934 Kuwait Oil Company concession was a 50/50 joint venture of Gulf Oil (Chevron) and Anglo-Persian (BP)."},
+  {name:"Wafra (Partitioned Zone)", owner:"chevron", country:"Kuwait / Saudi Arabia", c:[47.95, 28.55], kbd:150, disc:1953, op:"Wafra Joint Operations — Chevron (Saudi half) with KGOC (Kuwait half)", opType:"sister", opSis:"chevron", partners:[["Chevron (Saudi Arabia’s half)", 50], ["Kuwait Gulf Oil Co.", 50]], contract:"Chevron holds the Saudi-side concession (extended in 2009). Restarted in 2020 after a 5-year shutdown.", hist:"Getty Oil found Wafra in 1953; Texaco bought Getty (1984) and Chevron bought Texaco (2001)."},
+  {name:"Rumaila", owner:"bp", country:"Iraq", c:[47.35, 30.35], kbd:1400, disc:1953, op:"BP (Rumaila Operating Organisation)", opType:"sister", opSis:"bp", partners:[["BP", 47.6], ["PetroChina", 46.4], ["SOMO (Iraq)", 6.0]], contract:"Technical service contract (2009), extended to 2034.", hist:"Found by the Iraq Petroleum Company — owned mostly by BP, Shell, Esso and Mobil until Iraq nationalized it in 1972."},
+  {name:"West Qurna-1", owner:"petrochina", country:"Iraq", c:[47.3, 30.95], kbd:550, disc:1973, op:"PetroChina", opType:"noc", opSis:null, partners:[["PetroChina (lead)", null], ["Itochu", null], ["Pertamina", null], ["Iraqi state partner", null]], contract:"Technical service contract (2010).", hist:"ExxonMobil (Esso + Mobil) led it from 2010 until handing over to PetroChina in 2024."},
+  {name:"West Qurna-2", owner:"lukoil", country:"Iraq", c:[47.2, 31.3], kbd:450, disc:1973, op:"Lukoil", opType:"other", opSis:null, partners:[["Lukoil", 75], ["Iraqi state partner", 25]], contract:"Service contract (2010)."},
+  {name:"Majnoon", owner:"basra", country:"Iraq", c:[47.6, 31.05], kbd:240, disc:1975, op:"Basra Oil Company", opType:"noc", opSis:null, partners:[["Basra Oil Company", 100]], contract:"State-run.", hist:"Shell ran Majnoon from 2010 until handing it back in 2018."},
+  {name:"Zubair", owner:"eni", country:"Iraq", c:[47.7, 30.4], kbd:450, disc:1949, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 41.6], ["KOGAS", 23.8], ["Iraqi state partner", 34.6]], contract:"Technical service contract (2010)."},
+  {name:"Halfaya", owner:"petrochina", country:"Iraq", c:[47.4, 31.75], kbd:400, disc:1976, op:"PetroChina", opType:"noc", opSis:null, partners:[["PetroChina", 45], ["TotalEnergies", 22.5], ["Petronas", 22.5], ["Missan Oil", 10]], contract:"Technical service contract (2010)."},
+  {name:"Kirkuk", owner:"bp", country:"Iraq", c:[44.4, 35.45], kbd:300, disc:1927, op:"North Oil Company", opType:"noc", opSis:null, partners:[["North Oil Company", null], ["BP (redevelopment contract, 2025)", null]], contract:"BP signed in 2025 to redevelop Kirkuk’s four fields with a share of the extra output.", hist:"Discovered at Baba Gurgur by the Iraq Petroleum Company (BP, Shell, Esso, Mobil, CFP); nationalized 1972."},
+  {name:"Ahvaz", owner:"nioc", country:"Iran", c:[48.7, 31.3], kbd:750, disc:1958, op:"NIOC (National Iranian Oil Co.)", opType:"noc", opSis:null, partners:[["NIOC", 100]], contract:"No foreign concession — state-owned; under US sanctions. Output shown is pre-2026-war.", hist:"Anglo-Persian (BP) held Iran’s concession from 1909 until Mosaddegh nationalized it in 1951; a consortium of all Seven Sisters ran it 1954–1979."},
+  {name:"Gachsaran", owner:"nioc", country:"Iran", c:[50.8, 30.35], kbd:500, disc:1928, op:"NIOC (National Iranian Oil Co.)", opType:"noc", opSis:null, partners:[["NIOC", 100]], contract:"No foreign concession — state-owned; under US sanctions. Output shown is pre-2026-war.", hist:"Anglo-Persian (BP) held Iran’s concession from 1909 until Mosaddegh nationalized it in 1951; a consortium of all Seven Sisters ran it 1954–1979."},
+  {name:"Marun", owner:"nioc", country:"Iran", c:[49.2, 30.95], kbd:450, disc:1963, op:"NIOC (National Iranian Oil Co.)", opType:"noc", opSis:null, partners:[["NIOC", 100]], contract:"No foreign concession — state-owned; under US sanctions. Output shown is pre-2026-war.", hist:"Anglo-Persian (BP) held Iran’s concession from 1909 until Mosaddegh nationalized it in 1951; a consortium of all Seven Sisters ran it 1954–1979."},
+  {name:"Agha Jari", owner:"nioc", country:"Iran", c:[49.8, 30.75], kbd:200, disc:1938, op:"NIOC (National Iranian Oil Co.)", opType:"noc", opSis:null, partners:[["NIOC", 100]], contract:"No foreign concession — state-owned; under US sanctions. Output shown is pre-2026-war.", hist:"Anglo-Persian (BP) held Iran’s concession from 1909 until Mosaddegh nationalized it in 1951; a consortium of all Seven Sisters ran it 1954–1979."},
+  {name:"Azadegan", owner:"nioc", country:"Iran", c:[47.9, 31.35], kbd:180, disc:1999, op:"NIOC (National Iranian Oil Co.)", opType:"noc", opSis:null, partners:[["NIOC", 100]], contract:"No foreign concession — state-owned; under US sanctions. Output shown is pre-2026-war.", note:"CNPC pulled out in 2019.", hist:"Anglo-Persian (BP) held Iran’s concession from 1909 until Mosaddegh nationalized it in 1951; a consortium of all Seven Sisters ran it 1954–1979."},
+  {name:"Upper Zakum", owner:"exxon", country:"UAE", c:[53.65, 24.85], kbd:1000, disc:1963, op:"ADNOC Offshore", opType:"noc", opSis:null, partners:[["ADNOC", 60], ["ExxonMobil", 28], ["INPEX", 12]], contract:"Concession to 2051."},
+  {name:"Lower Zakum", owner:"adnoc", country:"UAE", c:[53.85, 24.6], kbd:450, disc:1963, op:"ADNOC Offshore", opType:"noc", opSis:null, partners:[["ADNOC", 60], ["ONGC Videsh-led group", 10], ["INPEX", 10], ["CNPC", 10], ["Eni", 5], ["TotalEnergies", 5]], contract:"Concession 2018–2058."},
+  {name:"Bu Hasa", owner:"bp", country:"UAE", c:[53.3, 23.5], kbd:650, disc:1962, op:"ADNOC Onshore", opType:"noc", opSis:null, partners:[["ADNOC", 60], ["TotalEnergies", 10], ["BP", 10], ["CNPC", 8], ["INPEX", 5], ["Zhenhua Oil", 4], ["GS Energy", 3]], contract:"ADNOC Onshore concession, 2015–2054.", hist:"The 1939–2014 onshore concession was shared by BP, Shell, ExxonMobil, TotalEnergies and Partex."},
+  {name:"Bab", owner:"bp", country:"UAE", c:[53.9, 23.9], kbd:450, disc:1954, op:"ADNOC Onshore", opType:"noc", opSis:null, partners:[["ADNOC", 60], ["TotalEnergies", 10], ["BP", 10], ["CNPC", 8], ["INPEX", 5], ["Zhenhua Oil", 4], ["GS Energy", 3]], contract:"ADNOC Onshore concession, 2015–2054.", hist:"The 1939–2014 onshore concession was shared by BP, Shell, ExxonMobil, TotalEnergies and Partex."},
+  {name:"Asab", owner:"bp", country:"UAE", c:[54.2, 23.3], kbd:300, disc:1965, op:"ADNOC Onshore", opType:"noc", opSis:null, partners:[["ADNOC", 60], ["TotalEnergies", 10], ["BP", 10], ["CNPC", 8], ["INPEX", 5], ["Zhenhua Oil", 4], ["GS Energy", 3]], contract:"ADNOC Onshore concession, 2015–2054.", hist:"The 1939–2014 onshore concession was shared by BP, Shell, ExxonMobil, TotalEnergies and Partex."},
+  {name:"Al-Shaheen", owner:"qatarenergy", country:"Qatar", c:[51.95, 26.6], kbd:300, disc:1974, op:"North Oil Company (QatarEnergy 70% / TotalEnergies 30%)", opType:"other", opSis:null, partners:[["QatarEnergy", 70], ["TotalEnergies", 30]], contract:"25-year agreement from 2017.", hist:"Maersk Oil ran it until 2017."},
+  {name:"Dukhan", owner:"qatarenergy", country:"Qatar", c:[50.8, 25.4], kbd:250, disc:1940, op:"QatarEnergy", opType:"noc", opSis:null, partners:[["QatarEnergy", 100]], contract:"No concession — state-owned.", hist:"Found by Petroleum Development (Qatar), an Iraq Petroleum Co. affiliate owned by BP, Shell, Esso, Mobil and CFP."},
+  {name:"Block 6 (Fahud, Yibal, Lekhwair…)", owner:"shell", country:"Oman", c:[56.4, 22.3], kbd:650, disc:1962, op:"Petroleum Development Oman (PDO)", opType:"noc", opSis:null, partners:[["Government of Oman", 60], ["Shell", 34], ["TotalEnergies", 4], ["PTTEP", 2]], contract:"Concession to 2044. Shell is the technical partner.", short:"Block 6 (PDO)"},
+  {name:"Tengiz", owner:"chevron", country:"Kazakhstan", c:[53.4, 46.15], kbd:950, disc:1979, op:"Tengizchevroil (TCO) — Chevron", opType:"sister", opSis:"chevron", partners:[["Chevron", 50], ["ExxonMobil", 25], ["KazMunayGas", 20], ["LukArco (Lukoil)", 5]], contract:"Concession to 2033 (extension under negotiation). Exports via the CPC pipeline to Novorossiysk."},
+  {name:"Kashagan", owner:"exxon", country:"Kazakhstan", c:[51.9, 46.35], kbd:400, disc:2000, op:"NCOC (North Caspian Operating Co.)", opType:"other", opSis:null, partners:[["KazMunayGas", 16.88], ["Eni", 16.81], ["ExxonMobil", 16.81], ["Shell", 16.81], ["TotalEnergies", 16.81], ["CNPC", 8.33], ["INPEX", 7.56]], contract:"Production-sharing agreement to 2041."},
+  {name:"Karachaganak", owner:"shell", country:"Kazakhstan", c:[53.0, 51.3], kbd:250, disc:1979, op:"KPO — Eni and Shell (joint operators)", opType:"sister", opSis:"shell", partners:[["Shell", 29.25], ["Eni", 29.25], ["Chevron", 18], ["Lukoil", 13.5], ["KazMunayGas", 10]], contract:"Production-sharing agreement to 2038. Mostly condensate."},
+  {name:"Samotlor", owner:"rosneft", country:"Russia", c:[76.7, 61.15], kbd:350, disc:1965, op:"Rosneft", opType:"noc", opSis:null, partners:[["Rosneft", 100]], contract:"Russian state licence.", hist:"Russia’s biggest field. BP walked away from its 19.75% of Rosneft in 2022."},
+  {name:"Priobskoye", owner:"rosneft", country:"Russia", c:[70.0, 61.2], kbd:600, disc:1982, op:"Rosneft (north) / Gazprom Neft (south)", opType:"noc", opSis:null, partners:[["Rosneft", null], ["Gazprom Neft", null]], contract:"Russian state licences."},
+  {name:"Romashkino", owner:"tatneft", country:"Russia", c:[52.4, 54.8], kbd:300, disc:1948, op:"Tatneft", opType:"noc", opSis:null, partners:[["Tatneft", 100]], contract:"Russian state licence."},
+  {name:"Vankor", owner:"rosneft", country:"Russia", c:[83.5, 67.8], kbd:300, disc:1988, op:"Rosneft", opType:"noc", opSis:null, partners:[["Rosneft", 50.1], ["ONGC Videsh", 26], ["Oil India / IOC / BPRL", 23.9]], contract:"Russian state licence."},
+  {name:"Sakhalin-1", owner:"rosneft", country:"Russia", c:[143.2, 52.6], kbd:200, disc:1977, op:"Sakhalin-1 LLC (Rosneft)", opType:"noc", opSis:null, partners:[["SODECO (Japan)", 30], ["Rosneft", 20], ["ONGC Videsh", 20], ["Unallocated 30% (seized from ExxonMobil in 2022)", 30]], contract:"Russian decree (2022) replaced the old production-sharing agreement.", hist:"ExxonMobil operated it until Russia took over its 30% stake in 2022."},
+  {name:"Johan Sverdrup", owner:"equinor", country:"Norway", c:[2.6, 58.85], kbd:755, disc:2010, op:"Equinor", opType:"noc", opSis:null, partners:[["Equinor", 42.6], ["Aker BP", 31.6], ["Petoro", 17.4], ["TotalEnergies", 8.4]], contract:"Norwegian production licence."},
+  {name:"Ekofisk", owner:"conocophillips", country:"Norway", c:[3.2, 56.55], kbd:130, disc:1969, op:"ConocoPhillips", opType:"other", opSis:null, partners:[["TotalEnergies", 39.9], ["ConocoPhillips", 35.1], ["Vår Energi", 12.4], ["Equinor", 7.6], ["Petoro", 5.0]], contract:"Norwegian production licence.", hist:"Phillips Petroleum found it in 1969 — Norway’s first big field."},
+  {name:"Johan Castberg", owner:"equinor", country:"Norway", c:[20.3, 72.5], kbd:220, disc:2011, op:"Equinor", opType:"noc", opSis:null, partners:[["Equinor", 46.3], ["Vår Energi", 30], ["Petoro", 23.7]], contract:"Norwegian production licence. First oil 2025."},
+  {name:"Clair", owner:"bp", country:"UK", c:[-2.6, 60.7], kbd:120, disc:1977, op:"BP", opType:"sister", opSis:"bp", partners:[["BP", 45.1], ["Shell", 28.0], ["Ithaca Energy", 19.4], ["Other", 7.5]], contract:"UK licence."},
+  {name:"Bonga", owner:"shell", country:"Nigeria", c:[4.55, 4.55], kbd:130, disc:1996, op:"Shell (SNEPCo)", opType:"sister", opSis:"shell", partners:[["Shell", 55], ["ExxonMobil", 20], ["TotalEnergies", 12.5], ["Eni", 12.5]], contract:"Production-sharing contract with NNPC."},
+  {name:"Erha", owner:"exxon", country:"Nigeria", c:[5.6, 4.2], kbd:60, disc:1999, op:"ExxonMobil", opType:"sister", opSis:"exxon", partners:[["ExxonMobil", 56.25], ["Shell", 43.75]], contract:"Production-sharing contract with NNPC."},
+  {name:"Agbami", owner:"chevron", country:"Nigeria", c:[5.6, 3.25], kbd:90, disc:1998, op:"Chevron", opType:"sister", opSis:"chevron", partners:[["Chevron", 67.3], ["Other partners", 32.7]], contract:"Production-sharing contract with NNPC."},
+  {name:"Egina", owner:"totalenergies", country:"Nigeria", c:[4.9, 3.1], kbd:150, disc:2003, op:"TotalEnergies", opType:"other", opSis:null, partners:[["CNOOC", 45], ["TotalEnergies", 24], ["Sapetro", 15], ["Other", 16]], contract:"Production-sharing contract with NNPC."},
+  {name:"Niger Delta onshore (ex-SPDC JV)", owner:"renaissance", country:"Nigeria", c:[6.6, 5.2], kbd:200, disc:1956, op:"Renaissance Africa Energy", opType:"other", opSis:null, partners:[["NNPC", 55], ["Renaissance Africa Energy", 30], ["TotalEnergies", 10], ["Eni", 5]], contract:"NNPC joint-venture licences.", hist:"Shell (SPDC) found Nigeria’s first oil at Oloibiri in 1956 and ran this JV until selling it to Renaissance in March 2025.", short:"Niger Delta (ex-Shell)"},
+  {name:"Block 15 (Kizomba)", owner:"exxon", country:"Angola", c:[11.6, -6.4], kbd:150, disc:1998, op:"ExxonMobil (Esso Angola)", opType:"sister", opSis:"exxon", partners:[["ExxonMobil", 36], ["Azule Energy (BP/Eni JV)", 26.67], ["Sonangol", 24], ["Equinor", 13.33]], contract:"Production-sharing agreement, extended to 2032."},
+  {name:"Block 17 (Dalia, Girassol, CLOV)", owner:"exxon", country:"Angola", c:[11.3, -7.4], kbd:350, disc:1996, op:"TotalEnergies", opType:"other", opSis:null, partners:[["TotalEnergies", 38], ["Equinor", 22.16], ["ExxonMobil", 19], ["Azule Energy (BP/Eni JV)", 15.84], ["Sonangol", 5]], contract:"Production-sharing agreement, extended to 2045.", short:"Block 17"},
+  {name:"Block 0 (Cabinda)", owner:"chevron", country:"Angola", c:[11.9, -5.5], kbd:100, disc:1966, op:"Chevron (CABGOC)", opType:"sister", opSis:"chevron", partners:[["Sonangol", 41], ["Chevron", 39.2], ["TotalEnergies", 10], ["Eni", 9.8]], contract:"Concession to 2050.", hist:"Gulf Oil (now Chevron) found oil off Cabinda in 1966.", short:"Block 0"},
+  {name:"Sharara", owner:"noclibya", country:"Libya", c:[10.9, 26.3], kbd:280, disc:1980, op:"Akakus Oil (NOC with Repsol, TotalEnergies, OMV, Equinor)", opType:"noc", opSis:null, partners:[["NOC Libya", 88], ["Repsol / TotalEnergies / OMV / Equinor", 12]], contract:"NOC exploration & production-sharing agreement."},
+  {name:"Waha (Gialo)", owner:"noclibya", country:"Libya", c:[21.5, 29.0], kbd:300, disc:1961, op:"Waha Oil (NOC)", opType:"noc", opSis:null, partners:[["NOC Libya", 59.16], ["TotalEnergies", 20.42], ["ConocoPhillips", 20.42]], contract:"NOC concession agreements."},
+  {name:"Sarir", owner:"noclibya", country:"Libya", c:[22.2, 27.6], kbd:200, disc:1961, op:"AGOCO (NOC)", opType:"noc", opSis:null, partners:[["NOC Libya", 100]], contract:"State-run.", hist:"Discovered by BP (with Bunker Hunt) in 1961; Gaddafi nationalized BP’s share in 1971."},
+  {name:"Hassi Messaoud", owner:"sonatrach", country:"Algeria", c:[6.1, 31.7], kbd:400, disc:1956, op:"Sonatrach", opType:"noc", opSis:null, partners:[["Sonatrach", 100]], contract:"No concession — state-owned since 1971."},
+  {name:"Permian Basin", owner:"exxon", country:"USA", c:[-102.5, 31.9], kbd:6300, disc:1920, op:"Many operators — largest: ExxonMobil (after buying Pioneer, 2024)", opType:"other", opSis:null, partners:[["ExxonMobil", null], ["Chevron", null], ["Occidental", null], ["Diamondback", null], ["ConocoPhillips", null], ["EOG", null]], contract:"Private and state mineral leases — no national concession.", note:"Largest oil basin in the world by output (Texas / New Mexico shale)."},
+  {name:"Bakken", owner:"chevron", country:"USA", c:[-103.0, 47.9], kbd:1200, disc:1951, op:"Many operators", opType:"other", opSis:null, partners:[["Continental Resources", null], ["Chord Energy", null], ["ConocoPhillips", null], ["Chevron (via Hess, 2025)", null], ["Devon", null]], contract:"Private, state and tribal mineral leases."},
+  {name:"Eagle Ford", owner:"eog", country:"USA", c:[-98.2, 28.6], kbd:1100, disc:2008, op:"Many operators", opType:"other", opSis:null, partners:[["EOG", null], ["ConocoPhillips", null], ["Devon", null], ["Marathon (ConocoPhillips)", null]], contract:"Private mineral leases."},
+  {name:"Mars (US Gulf)", owner:"shell", country:"USA", c:[-89.2, 28.3], kbd:150, disc:1989, op:"Shell", opType:"sister", opSis:"shell", partners:[["Shell", 71.5], ["BP", 28.5]], contract:"US federal offshore lease."},
+  {name:"Thunder Horse (US Gulf)", owner:"bp", country:"USA", c:[-88.5, 28.2], kbd:150, disc:1999, op:"BP", opType:"sister", opSis:"bp", partners:[["BP", 75], ["ExxonMobil", 25]], contract:"US federal offshore lease.", short:"Thunder Horse"},
+  {name:"Mad Dog (US Gulf)", owner:"bp", country:"USA", c:[-90.9, 27.2], kbd:200, disc:1998, op:"BP", opType:"sister", opSis:"bp", partners:[["BP", 60.5], ["Woodside", 23.9], ["Chevron", 15.6]], contract:"US federal offshore lease.", short:"Mad Dog"},
+  {name:"Jack / St. Malo (US Gulf)", owner:"chevron", country:"USA", c:[-90.5, 26.3], kbd:100, disc:2004, op:"Chevron", opType:"sister", opSis:"chevron", partners:[["Chevron", 51], ["Petrobras", 25], ["Equinor", 21.5], ["ExxonMobil", 1.25], ["Eni", 1.25]], contract:"US federal offshore lease (St. Malo stakes shown).", short:"Jack / St. Malo"},
+  {name:"Prudhoe Bay", owner:"exxon", country:"USA", c:[-148.4, 70.3], kbd:250, disc:1968, op:"Hilcorp", opType:"other", opSis:null, partners:[["ExxonMobil", 36.4], ["ConocoPhillips", 36.1], ["Hilcorp", 26.3], ["Chevron", 1.2]], contract:"Alaska state leases.", hist:"Found by ARCO and Humble (Exxon) in 1968 — the largest field in North America. BP ran it for decades until selling to Hilcorp in 2020."},
+  {name:"Athabasca oil sands", owner:"exxon", country:"Canada", c:[-111.8, 56.6], kbd:3500, disc:1967, op:"Many operators — largest: Canadian Natural, Suncor, Cenovus", opType:"other", opSis:null, partners:[["Canadian Natural", null], ["Suncor", null], ["Cenovus", null], ["Imperial Oil (69.6% ExxonMobil)", null]], contract:"Alberta Crown oil-sands leases.", note:"Bitumen — mined or steam-produced."},
+  {name:"Kearl", owner:"exxon", country:"Canada", c:[-111.1, 57.4], kbd:280, disc:2013, op:"Imperial Oil (69.6% ExxonMobil)", opType:"sister", opSis:"exxon", partners:[["Imperial Oil (69.6% ExxonMobil)", 70.96], ["ExxonMobil Canada", 29.04]], contract:"Alberta Crown oil-sands lease.", note:"Oil-sands mine."},
+  {name:"Cold Lake", owner:"exxon", country:"Canada", c:[-110.2, 54.5], kbd:140, disc:1964, op:"Imperial Oil (69.6% ExxonMobil)", opType:"sister", opSis:"exxon", partners:[["Imperial Oil (69.6% ExxonMobil)", 100]], contract:"Alberta Crown oil-sands lease.", note:"Steam-produced bitumen."},
+  {name:"Ku-Maloob-Zaap", owner:"pemex", country:"Mexico", c:[-92.2, 19.6], kbd:600, disc:1979, op:"Pemex", opType:"noc", opSis:null, partners:[["Pemex", 100]], contract:"No concession — Pemex (state) since the 1938 expropriation of foreign companies, Shell and Standard Oil among them."},
+  {name:"Cantarell", owner:"pemex", country:"Mexico", c:[-92.0, 19.3], kbd:150, disc:1976, op:"Pemex", opType:"noc", opSis:null, partners:[["Pemex", 100]], contract:"No concession — Pemex (state) since the 1938 expropriation of foreign companies, Shell and Standard Oil among them.", note:"Once the world’s second-largest producing field (2.1 mb/d in 2004)."},
+  {name:"Tupi (ex-Lula)", owner:"shell", country:"Brazil", c:[-42.8, -25.4], kbd:900, disc:2006, op:"Petrobras", opType:"noc", opSis:null, partners:[["Petrobras", 67.22], ["Shell", 23.02], ["Petrogal (Galp)", 9.21], ["PPSA (state)", 0.55]], contract:"Concession (2000) + transfer-of-rights.", short:"Tupi"},
+  {name:"Búzios", owner:"petrobras", country:"Brazil", c:[-42.0, -24.6], kbd:750, disc:2010, op:"Petrobras", opType:"noc", opSis:null, partners:[["Petrobras", 88.99], ["CNOOC", 7.34], ["CNODC", 3.67]], contract:"Transfer-of-rights + production-sharing."},
+  {name:"Mero (Libra)", owner:"shell", country:"Brazil", c:[-43.3, -24.9], kbd:550, disc:2010, op:"Petrobras", opType:"noc", opSis:null, partners:[["Petrobras", 38.6], ["Shell", 19.3], ["TotalEnergies", 19.3], ["CNPC", 9.65], ["CNOOC", 9.65], ["PPSA (state)", 3.5]], contract:"Production-sharing contract (2013).", short:"Mero"},
+  {name:"Sapinhoá", owner:"shell", country:"Brazil", c:[-43.4, -25.75], kbd:200, disc:2008, op:"Petrobras", opType:"noc", opSis:null, partners:[["Petrobras", 45], ["Shell", 30], ["Repsol Sinopec", 25]], contract:"Concession."},
+  {name:"Bacalhau", owner:"exxon", country:"Brazil", c:[-44.9, -25.2], kbd:220, disc:2012, op:"Equinor", opType:"noc", opSis:null, partners:[["Equinor", 40], ["ExxonMobil", 40], ["Petrogal (Galp)", 20]], contract:"Concession + production-sharing. First oil 2025."},
+  {name:"Stabroek (Liza, Payara, Yellowtail…)", owner:"exxon", country:"Guyana", c:[-57.2, 7.6], kbd:900, disc:2015, op:"ExxonMobil", opType:"sister", opSis:"exxon", partners:[["ExxonMobil", 45], ["Chevron (via Hess, 2025)", 30], ["CNOOC", 25]], contract:"Production-sharing agreement (2016).", note:"The fastest-growing oil province in the world.", short:"Stabroek"},
+  {name:"Orinoco Belt", owner:"chevron", country:"Venezuela", c:[-64.5, 8.4], kbd:600, disc:1936, op:"PDVSA (joint ventures)", opType:"noc", opSis:null, partners:[["PDVSA", null], ["Chevron (Petropiar 30%, Petroindependencia ~36%)", null], ["CNPC", null]], contract:"PDVSA-majority joint ventures (2007 law). 2026 scenario: US naval blockade and Maduro’s capture (Jan 2026).", note:"Extra-heavy crude — the largest reserves on Earth.", hist:"ExxonMobil and ConocoPhillips were expropriated in 2007; Chevron stayed on under a US licence."},
+  {name:"Lake Maracaibo", owner:"chevron", country:"Venezuela", c:[-71.6, 10.0], kbd:300, disc:1914, op:"PDVSA (joint ventures)", opType:"noc", opSis:null, partners:[["PDVSA", null], ["Chevron (Petroboscán 39.2%)", null]], contract:"PDVSA-majority joint ventures.", hist:"Shell’s Zumaque-1 well (1914) started Venezuela’s oil age; Shell, Creole (Standard Oil NJ, now ExxonMobil) and Gulf Oil ran it until nationalization in 1976."},
+  {name:"Vaca Muerta", owner:"chevron", country:"Argentina", c:[-69.0, -38.4], kbd:550, disc:2010, op:"Many operators — largest: YPF (51% state)", opType:"noc", opSis:null, partners:[["YPF", null], ["Vista", null], ["Pluspetrol", null], ["Chevron (Loma Campana, 50% with YPF)", null], ["Shell", null], ["TotalEnergies", null]], contract:"Neuquén provincial concessions (35 years).", note:"Shale — the biggest outside North America.", hist:"ExxonMobil sold its Vaca Muerta blocks to Pluspetrol in 2024."},
+  {name:"Daqing", owner:"petrochina", country:"China", c:[124.9, 46.6], kbd:600, disc:1959, op:"PetroChina", opType:"noc", opSis:null, partners:[["PetroChina", 100]], contract:"No concession — state company."},
+  {name:"Changqing (Ordos Basin)", owner:"petrochina", country:"China", c:[108.0, 37.5], kbd:500, disc:1970, op:"PetroChina", opType:"noc", opSis:null, partners:[["PetroChina", 100]], contract:"No concession — state company.", short:"Changqing"},
+  {name:"Shengli", owner:"sinopec", country:"China", c:[118.6, 37.4], kbd:460, disc:1961, op:"Sinopec", opType:"noc", opSis:null, partners:[["Sinopec", 100]], contract:"No concession — state company."},
+  {name:"Bohai Bay (offshore)", owner:"cnooc", country:"China", c:[119.8, 38.8], kbd:700, disc:1967, op:"CNOOC", opType:"noc", opSis:null, partners:[["CNOOC", 100]], contract:"No concession — state company.", short:"Bohai Bay"},
+  {name:"Mumbai High", owner:"ongc", country:"India", c:[71.3, 19.4], kbd:130, disc:1974, op:"ONGC", opType:"noc", opSis:null, partners:[["ONGC", 100]], contract:"State-run.", hist:"BP signed on in 2025 as technical service provider to slow the decline (no equity)."},
+  {name:"Rokan Block (Minas, Duri)", owner:"pertamina", country:"Indonesia", c:[101.3, 1.3], kbd:160, disc:1941, op:"Pertamina Hulu Rokan", opType:"noc", opSis:null, partners:[["Pertamina", 100]], contract:"State-run since 2021.", hist:"Caltex (Socal + Texaco, both now Chevron) found and ran it for ~80 years until handing it to Pertamina in 2021.", short:"Rokan"},
+  {name:"Banyu Urip (Cepu)", owner:"exxon", country:"Indonesia", c:[111.6, -7.15], kbd:150, disc:2001, op:"ExxonMobil", opType:"sister", opSis:"exxon", partners:[["ExxonMobil", 45], ["Pertamina", 45], ["Local governments", 10]], contract:"Production-sharing contract to 2035.", short:"Banyu Urip"},
+  {name:"ACG (Azeri-Chirag-Gunashli)", owner:"bp", country:"Azerbaijan", c:[50.9, 40.05], kbd:330, disc:1985, op:"BP", opType:"sister", opSis:"bp", partners:[["BP", 30.37], ["SOCAR", 25.0], ["MOL", 9.57], ["INPEX", 9.31], ["Equinor", 7.27], ["ExxonMobil", 6.79], ["TPAO", 5.73], ["Itochu", 3.65], ["ONGC Videsh", 2.31]], contract:"Production-sharing agreement, extended to 2049.", hist:"Feeds the BTC pipeline to Ceyhan.", short:"ACG"},
+  // ---- Eni-run fields (added 2026-09-28; outputs are estimates) ----
+  {name:"Goliat", owner:"eni", country:"Norway", c:[22.25, 71.3], kbd:30, disc:2000, op:"Vår Energi (63% Eni)", opType:"other", opSis:null, partners:[["Vår Energi (63% Eni)", 65], ["Equinor", 35]], contract:"Norwegian production licence (PL229).", note:"The first oil field in the Barents Sea (2016)."},
+  {name:"Balder / Jotun (Balder X)", owner:"eni", country:"Norway", c:[2.4, 59.2], kbd:60, disc:1967, op:"Vår Energi (63% Eni)", opType:"other", opSis:null, partners:[["Vår Energi (63% Eni)", 90], ["Kistos", 10]], contract:"Norwegian production licence.", note:"Balder X (Jotun FPSO) came online in 2025.", short:"Balder"},
+  {name:"El Feel (Elephant)", owner:"eni", country:"Libya", c:[11.9, 24.6], kbd:60, disc:1997, op:"Mellitah Oil & Gas (NOC–Eni JV)", opType:"other", opSis:null, partners:[["NOC Libya", 50], ["Eni", 50]], contract:"Exploration & production-sharing agreement with NOC.", hist:"Enrico Mattei, Eni’s founder, coined the name “Seven Sisters” for the cartel that shut Italy out — and broke it by offering producing countries better than 50/50 deals."},
+  {name:"Bouri (offshore)", owner:"eni", country:"Libya", c:[12.2, 33.9], kbd:25, disc:1976, op:"Mellitah Oil & Gas (NOC–Eni JV)", opType:"other", opSis:null, partners:[["NOC Libya", 50], ["Eni", 50]], contract:"Exploration & production-sharing agreement with NOC.", note:"The largest producing oil field in the Mediterranean.", short:"Bouri"},
+  {name:"Val d’Agri", owner:"shell", country:"Italy", c:[15.9, 40.3], kbd:55, disc:1988, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 61], ["Shell", 39]], contract:"Italian onshore concession (Basilicata).", note:"The largest onshore oil field in Europe."},
+  {name:"Baleine", owner:"eni", country:"Côte d'Ivoire", c:[-4.0, 4.9], kbd:60, disc:2021, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 77.25], ["Petroci (state)", 22.75]], contract:"Production-sharing contract (blocks CI-101 / CI-802).", note:"Côte d’Ivoire’s biggest discovery; phase 2 started 2024."},
+  {name:"Marine XII (Nené, Litchendjili)", owner:"eni", country:"Congo", c:[11.5, -4.95], kbd:30, disc:2013, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 65], ["Lukoil", 25], ["SNPC (state)", 10]], contract:"Production-sharing agreement.", short:"Marine XII"},
+  {name:"Berkine Basin (BRN, ROM, MLE)", owner:"eni", country:"Algeria", c:[8.0, 30.9], kbd:70, disc:1994, op:"Groupement Sonatrach–Eni", opType:"other", opSis:null, partners:[["Sonatrach", null], ["Eni", null]], contract:"Contracts with Sonatrach under Algeria’s hydrocarbons law.", short:"Berkine"},
+  {name:"Belayim (Gulf of Suez)", owner:"eni", country:"Egypt", c:[33.1, 28.6], kbd:40, disc:1955, op:"Petrobel (Eni–EGPC JV)", opType:"other", opSis:null, partners:[["EGPC (state)", 50], ["Eni", 50]], contract:"Concession with EGPC.", hist:"Eni’s first big foreign find (1955), under Enrico Mattei — the man who coined “Seven Sisters”.", short:"Belayim"},
+  {name:"OCTP (Sankofa)", owner:"eni", country:"Ghana", c:[-2.8, 4.4], kbd:30, disc:2012, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 44.44], ["Vitol", 35.56], ["GNPC (state)", 20]], contract:"Petroleum agreement with GNPC.", short:"OCTP"},
+  {name:"Nikaitchuq", owner:"eni", country:"USA", c:[-150.0, 70.6], kbd:15, disc:2005, op:"Eni", opType:"other", opSis:null, partners:[["Eni", 100]], contract:"Alaska state leases.", note:"Eni’s only operated field in the United States."}
+];
+
+// Derived per field: every Sister involved (listed in the tooltip).
+fields.forEach(f => {
+  const stakes = [];
+  f.partners.forEach(p => { const k = sisterOf(p[0]); if (k && !stakes.includes(k)) stakes.push(k); });
+  if (f.opSis && !stakes.includes(f.opSis)) stakes.unshift(f.opSis);
+  f.sisters = stakes;
+});
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const landFill = '#262623', landStroke = '#4a4944';
+const fieldLandFill = '#33322e';   // countries with at least one tracked field
+const labelFill = '#f0efec';
+const countriesWithFields = new Set();
+// Topology names differ from the display names used in the data.
+const topoName = { 'USA':'United States of America', 'UK':'United Kingdom', 'UAE':'United Arab Emirates' };
+fields.forEach(f => f.country.split(' / ').forEach(n => countriesWithFields.add(topoName[n] || n)));
+function displayName(n){ return ({'United States of America':'USA','United Kingdom':'UK','United Arab Emirates':'UAE'})[n] || n; }
+
+const projection = d3.geoNaturalEarth1().scale(200).translate([420,270]);
+const path = d3.geoPath(projection);
+const svg = d3.select('#fieldsMap').append('svg')
+  .attr('viewBox','0 0 960 500')
+  .on('click', () => { activeKey = null; activeField = null; activeCountry = null; applyFocus(); }); // click the sea = reset
+
+function pt(c){ return projection(c); }
+function radius(f){ return 2.2 + Math.sqrt(f.kbd) * 0.13; }
+function fieldFill(f){ return companies[f.owner].color; }
+const dotColor = fieldFill;
+const sisterKeys = ['exxon','chevron','bp','shell'];
+
+// Is company k involved in field f at all (owner, operator or partner)?
+// Sisters match by the first word of a name (so 'Aker BP' is not BP);
+// the others by any of their aka names appearing in the operator or partners.
+function involved(f, k){
+  if (f.owner === k) return true;
+  if (sisterKeys.includes(k)) return f.sisters.includes(k);
+  const names = [f.op].concat(f.partners.map(p => p[0]));
+  return (companies[k].aka || []).some(a => names.some(n => new RegExp('(^|[^\\p{L}])' + a + '($|[^\\p{L}])', 'u').test(n)));
+}
+// Oil each company controls = total output of the fields it owns (its color).
+Object.entries(companies).forEach(([k, c]) => {
+  c.key = k;
+  const own = fields.filter(f => f.owner === k);
+  c.kbd = own.reduce((t, f) => t + f.kbd, 0);
+  c.nOwn = own.length;
+  c.nInv = fields.filter(f => involved(f, k)).length;
+});
+
+// ---- tooltip helpers (own copies) ----
+const tooltip = d3.select('#tooltip');
+function showTooltip(event, titleHtml, dotColor, bodyHtml){
+  tooltip.html(
+    '<div class="tt-title">' + (dotColor ? '<span class="tt-dot" style="background:'+dotColor+'"></span>' : '') + titleHtml + '</div>' +
+    '<div class="tt-body">' + bodyHtml + '</div>'
+  );
+  moveTooltip(event);
+  tooltip.classed('show', true);
+}
+function moveTooltip(event){
+  const pad = 14;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const ttNode = tooltip.node();
+  const w = ttNode.offsetWidth || 240, h = ttNode.offsetHeight || 60;
+  let x = event.clientX + pad, y = event.clientY + pad;
+  if (x + w + pad > vw) x = event.clientX - w - pad;
+  if (y + h + pad > vh) y = event.clientY - h - pad;
+  tooltip.style('left', x + 'px').style('top', y + 'px');
+}
+function hideTooltip(){ tooltip.classed('show', false); }
+
+function companyLine(p){
+  const k = sisterOf(p[0]);
+  const name = k ? '<b style="color:' + companies[k].color + '">' + p[0] + '</b>' : p[0];
+  return name + (p[1] == null ? '' : ' — ' + p[1] + '%');
+}
+// Hover: WHO it belongs to (company, nationality, state or private) first,
+// then the concession details.
+function fieldTooltip(event, f){
+  const o = companies[f.owner];
+  const allKnown = f.partners.every(p => p[1] != null);
+  const operates = f.opSis === f.owner || [o.name.split(' ')[0]].concat(o.aka || []).some(a => f.op.includes(a));
+  showTooltip(event, f.name + ' (' + f.country + ')', o.color,
+    '<b>Belongs to:</b> <b style="color:' + o.color + '">' + o.name + '</b> ' + o.flag + ' — ' + o.nat + ' company<br>' +
+    o.own +
+    (o.sister ? '<br>One of the Seven Sisters: ' + o.sister + '.' : '') +
+    (o.rival ? '<br>' + o.rival + '.' : '') +
+    (operates ? '' : f.op.startsWith('Many operators')
+      ? '<br><i>' + o.name + ' is one of the main producers in this basin.</i>'
+      : '<br><i>' + o.name + ' is a partner (stake or contract); the field is operated by ' + f.op + '.</i>') +
+    '<div style="margin-top:6px"><b>Operator:</b> ' + f.op + '</div>' +
+    '<div style="margin-top:4px"><b>' + (allKnown ? 'Concession holders (equity):' : 'Companies involved:') + '</b><br>' +
+      f.partners.map(companyLine).join('<br>') + '</div>' +
+    '<div style="margin-top:4px"><b>Concession / contract:</b> ' + f.contract + '</div>' +
+    '<div style="margin-top:4px">Discovered ' + f.disc + ' · ~' + f.kbd.toLocaleString('en-US') + ' kb/d</div>' +
+    (f.note ? '<div style="margin-top:4px">' + f.note + '</div>' : '') +
+    (f.hist ? '<div style="margin-top:4px"><i>' + f.hist + '</i></div>' : ''));
+}
+
+// Re-places field labels (replaced once the map has loaded; a no-op until then).
+let layoutLabels = function(){};
+
+// ---- focus state ----
+let activeKey = null;     // a company key: only the fields it owns (its color) stay
+let activeField = null;   // the clicked field (white outline)
+let activeCountry = null; // a clicked country (topology name)
+
+function keepField(f){
+  if (activeCountry) return f.country.split(' / ').some(n => (topoName[n] || n) === activeCountry);
+  return activeKey ? f.owner === activeKey : true;
+}
+function applyFocus(){
+  svg.selectAll('.field')
+    .classed('faded', f => !keepField(f))
+    .classed('selected', f => f === activeField || (activeKey && f.owner === activeKey));
+  svg.selectAll('.country').classed('selected', d => d.properties && d.properties.name === activeCountry);
+  // The legend follows the map: other companies dim, and the active one
+  // scrolls into view (also when it was picked by clicking a field).
+  legend.selectAll('.legend-item').classed('dimmed', function(){
+    return activeKey ? d3.select(this).attr('data-key') !== activeKey : false;
+  });
+  if (activeKey){
+    const row = legend.select('.legend-item[data-key="' + activeKey + '"]').node();
+    const list = row && row.parentNode;
+    if (list){
+      const r = row.getBoundingClientRect(), l = list.getBoundingClientRect();
+      if (r.top < l.top || r.bottom > l.bottom) list.scrollTop += r.top - l.top - 8;
+    }
+  }
+  layoutLabels();
+}
+// Click a field: highlight and isolate every field of the same company
+// worldwide. Click it again (or the sea) to reset.
+function selectField(f){
+  if (activeField === f){ activeField = null; activeKey = null; activeCountry = null; applyFocus(); return; }
+  activeField = f; activeKey = f.owner; activeCountry = null;
+  applyFocus();
+}
+
+// ---- legend: ALL companies, biggest first (oil in the fields they own),
+//      in a list that scrolls so the legend stays as tall as the map ----
+const legend = d3.select('#fieldsLegend').classed('fields-legend', true);
+const legendHeader = legend.append('div').attr('class','legend-header');
+legendHeader.append('span').attr('class','legend-title').text('COMPANIES — BY OIL CONTROLLED:');
+legendHeader.append('span').attr('class','legend-hint')
+  .text('Each color is one company. Click a company (or a field) to isolate the fields it controls. Hover a field for details and partners. Scroll the list; scroll or pinch the map to zoom.');
+const companyList = legend.append('div').attr('class','company-list');
+companyList.selectAll('.legend-item')
+  .data(Object.values(companies).sort((a, b) => b.kbd - a.kbd))
+  .join('div')
+  .attr('class','legend-item')
+  .attr('data-key', c => c.key)
+  .on('click', function(event, c){
+    activeField = null; activeCountry = null;
+    activeKey = (activeKey === c.key) ? null : c.key;
+    applyFocus();
+  })
+  .html(c => '<span class="sw" style="background:' + c.color + '"></span>' +
+    '<span><b>' + c.name + '</b> ' + c.flag + ' ' + c.nat.split(' ')[0] +
+    (c.sister ? ' <span class="tag">Seven Sisters</span>' : '') + (c.rival ? ' <span class="tag">challenger</span>' : '') +
+    '<br>~' + c.kbd.toLocaleString('en-US') + ' kb/d in ' + c.nOwn + ' field' + (c.nOwn === 1 ? '' : 's') +
+    (c.nInv > c.nOwn ? ' · stakes in ' + (c.nInv - c.nOwn) + ' more' : '') + '</span>');
+const sizeKey = legend.append('div').attr('class','line-key');
+sizeKey.append('span').attr('class','legend-title').text('FIELD SIZE (crude + condensate output):');
+sizeKey.append('div').attr('class','line-key-row')
+  .html('<svg viewBox="0 0 120 30" style="width:120px;height:30px;flex:0 0 120px">' +
+    [[100,12],[1000,44],[3000,88]].map(([k,x]) => {
+      const r = 2.2 + Math.sqrt(k)*0.13;
+      return '<circle cx="' + x + '" cy="' + (26-r) + '" r="' + r + '" fill="none" stroke="#a3a29c"/>';
+    }).join('') + '</svg><span>100 · 1,000 · 3,000 thousand barrels/day</span>');
+sizeKey.append('div').attr('class','legend-hint').style('font-size','10.5px').style('margin-top','4px')
+  .text(fields.length + ' oil fields, ' + Object.keys(companies).length + ' companies. Stakes are best estimates (~2025) — see fields.xlsx.');
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world=>{
+  const countries = topojson.feature(world, world.objects.countries).features;
+  // Everything drawn on the map lives in this layer, so zoom/pan moves it as one.
+  const zoomLayer = svg.append('g').attr('class','zoom-layer');
+
+  zoomLayer.append('g').selectAll('path').data(countries).join('path')
+    .attr('class','country')
+    .attr('d',path)
+    .attr('fill', d => countriesWithFields.has(d.properties && d.properties.name) ? fieldLandFill : landFill)
+    .attr('stroke', landStroke)
+    .attr('stroke-width',1)
+    .on('mouseenter', function(event, d){
+      const n = d.properties && d.properties.name;
+      d3.select(this).classed('hovered', true);
+      const own = fields.filter(f => f.country.split(' / ').some(c => (topoName[c] || c) === n));
+      showTooltip(event, displayName(n), null, own.length
+        ? own.map(f => '<span style="color:' + dotColor(f) + '">●</span> ' + f.name + ' — ' + companies[f.owner].name).join('<br>')
+        : 'No giant field tracked here.');
+    })
+    .on('click', function(event, d){
+      event.stopPropagation();
+      const n = d.properties && d.properties.name;
+      activeField = null; activeKey = null;
+      activeCountry = (countriesWithFields.has(n) && activeCountry !== n) ? n : null;
+      applyFocus();
+    })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  // Big fields first so small ones sit on top and stay clickable.
+  const sorted = fields.slice().sort((a,b) => b.kbd - a.kbd);
+  zoomLayer.append('g').selectAll('circle').data(sorted).join('circle')
+    .attr('class','field')
+    .attr('cx', f => pt(f.c)[0]).attr('cy', f => pt(f.c)[1])
+    .attr('r', radius)
+    .attr('fill', fieldFill)
+    .attr('stroke','#000000').attr('stroke-width',0.8)
+    .on('mouseenter', function(event, f){ d3.select(this).classed('hovered', true); fieldTooltip(event, f); })
+    .on('click', (event, f) => { event.stopPropagation(); selectField(f); })
+    .on('mousemove', moveTooltip)
+    .on('mouseleave', function(){ d3.select(this).classed('hovered', false); hideTooltip(); });
+
+  // Labels = the COMPANY the field belongs to (user rule; the field name is
+  // in the hover tooltip). Biggest fields win; a label is hidden if it
+  // would overlap one already placed (re-run on every zoom, so more appear
+  // as you zoom in).
+  const labels = zoomLayer.append('g').selectAll('text').data(sorted).join('text')
+    .attr('class','label-text field-label')
+    .attr('fill', labelFill)
+    .text(f => companies[f.owner].label || companies[f.owner].name);
+  let k = 1;
+  layoutLabels = function(){
+    const placed = [];
+    labels.each(function(f){
+      const p = pt(f.c);
+      const el = d3.select(this)
+        .attr('x', p[0] + (radius(f) + 3)/k).attr('y', p[1] + 3.5/k).attr('font-size', 10.5/k)
+        .style('display', null);
+      if (!keepField(f)){ el.style('display','none'); return; }
+      const b = this.getBBox();
+      const hit = placed.some(q => b.x < q.x + q.width && b.x + b.width > q.x && b.y < q.y + q.height && b.y + b.height > q.y);
+      if (hit) el.style('display','none'); else placed.push(b);
+    });
+  };
+  layoutLabels();
+  // Labels can only be measured while the view is visible: re-place them
+  // whenever the FIELDS view is shown (the shared toggle flips "hidden").
+  new MutationObserver(() => { if (!document.getElementById('fieldsView').hidden) layoutLabels(); })
+    .observe(document.getElementById('fieldsView'), {attributes:true, attributeFilter:['hidden']});
+
+  // ---- zoom & pan: the map magnifies, but markers and labels keep their
+  //      on-screen size (country strokes via the --k CSS variable). ----
+  const zoom = d3.zoom().scaleExtent([1,12])
+    .extent([[0,0],[960,500]]).translateExtent([[0,0],[960,500]])
+    .on('zoom', ({transform}) => {
+      k = transform.k;
+      zoomLayer.attr('transform', transform);
+      svg.style('--k', k);
+      zoomLayer.selectAll('circle.field').attr('r', f => radius(f)/k).attr('stroke-width', 0.8/k);
+      layoutLabels();
+    });
+  svg.call(zoom).on('dblclick.zoom', null); // double-click stays a select/deselect, not a zoom
+  const controls = d3.select('#fieldsMap').append('div').attr('class','zoom-controls');
+  controls.append('button').attr('title','Zoom in').text('+')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1.6));
+  controls.append('button').attr('title','Zoom out').text('−')
+    .on('click', () => svg.transition().duration(250).call(zoom.scaleBy, 1/1.6));
+  controls.append('button').attr('title','Reset view').text('⟲')
+    .on('click', () => svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity));
+});
+})();
+</script>
+
 </body>
 </html>

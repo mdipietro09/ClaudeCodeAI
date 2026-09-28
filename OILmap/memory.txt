@@ -1,286 +1,452 @@
-# OIL MAP — project spec (state as of 2026-09-23, MVP)
+# OIL MAP — project spec (state as of 2026-09-28)
 
-This file describes EXACTLY what the project is right now, so another
-agent can maintain or rebuild it. OIL.html is the source of truth for
-code and geometry; crude.xlsx / refined.xlsx are the source of truth for
-the figures and their sourcing. Read all three before changing anything.
+Read this first. It describes the project exactly as it is, so another
+agent can maintain it or rebuild it from scratch. Sources of truth:
+  - OIL.html   → all code, geometry (coordinates, waypoints, label offsets)
+                 and the data the page actually renders;
+  - crude.xlsx / refined.xlsx / fields.xlsx → the same figures with their
+                 sourcing and notes.
+There is NO generator: the data objects in OIL.html and the xlsx sheets
+are kept in sync BY HAND. Change both, always.
 
-------------------------------------------------------------------------
-## 1. Files
-- OIL.html      — the whole app: one self-contained HTML file (~1160 lines).
-                  Open directly in a browser, no build step. Needs internet
-                  (loads D3 v7.8.5 + TopoJSON 3.0.2 from cdnjs, and the world
-                  topology world-atlas@2/countries-110m.json from jsdelivr).
-- crude.xlsx    — crude data. Sheets: Groups, Export flows, Chokepoints,
-                  Notes & simplifications, Export-Import % (map data).
-- refined.xlsx  — refined-products data. Sheets: Groups, Export flows,
-                  Export-Import % (map data), Chokepoints, Notes & method.
-- memory.txt    — this file.
-There is no generator: the HTML data objects are kept in sync with the
-xlsx sheets BY HAND.
+========================================================================
+## 1. What it is
+An interactive, dark, single-page world map about oil, with 3 tabs:
+  CRUDE   — where crude oil goes: exporters colored by crude family,
+            arrows for trade flows, 8 strategic chokepoints.
+  REFINED — where refined products (diesel, gasoline, jet) go: exporters
+            colored by refining/export role, arrows, same 8 chokepoints.
+  FIELDS  — who controls the world's big oil fields: one colored circle
+            per field, one color per company, focus on the Seven Sisters.
+The 2026 scenario used throughout (Iran war, US naval blockade of
+Venezuela, Maduro captured Jan 2026) is the user's illustrative scenario,
+NOT verified news. Flow directions are real patterns; most percentages,
+outputs and stakes are this project's estimates (the xlsx says which are
+hard-sourced).
 
-------------------------------------------------------------------------
-## 2. Page layout (shared HTML/CSS)
-- Black page (--bg #000000, --fg #f0efec, --sub #a3a29c, --panel #161615,
-  --panel-border #3a3a37), system font, 24px padding. Always dark; no
-  light theme.
-- Header "OIL MAP" (h1). Below it a segmented toggle: CRUDE | REFINED
-  (.type-toggle / .type-btn; active button = light pill with black text).
-- Two views, only one visible at a time:
+========================================================================
+## 2. Files
+- OIL.html     — the whole app, one self-contained file (~1860 lines). Open
+                 in a browser, no build. Needs internet: D3 v7.8.5 and
+                 TopoJSON 3.0.2 from cdnjs; world topology
+                 https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json
+- crude.xlsx   — Groups · Export flows (74 rows) · Chokepoints (8) ·
+                 Notes & simplifications · Export-Import % (map data).
+- refined.xlsx — Groups · Export flows (40 rows) · Export-Import % (map
+                 data) · Chokepoints (8) · Notes & method.
+- fields.xlsx  — Fields (97 rows) · Companies (28, sorted by oil
+                 controlled, with color) · Seven Sisters (lineage + home
+                 country) · Notes & method.
+- memory.txt   — this file.
+
+========================================================================
+## 3. Page layout and shared parts
+- Always dark. CSS vars: --bg #000000, --fg #f0efec, --sub #a3a29c,
+  --panel #161615, --panel-border #3a3a37. System font, 24px padding.
+- h1 "OIL MAP", then a segmented toggle CRUDE | REFINED | FIELDS
+  (.type-toggle/.type-btn; active = light pill, black text).
+- Three views; only one visible (others have the `hidden` attribute):
     #crudeView   → map #crudeMap   + legend #crudeLegend
     #refinedView → map #refinedMap + legend #refinedLegend
-  Each view = flex row: map column (fills space) + legend column (260px).
-- One shared floating #tooltip div (dark panel, colored dot + title + body).
-- Footer: "Data as of ~Sept 2026, see crude.xlsx and refined.xlsx for full
-  sourcing, percentages, and routing notes behind every figure shown here."
+    #fieldsView  → map #fieldsMap  + legend #fieldsLegend
+  Each view: .wrap flex row = map column (fills) + .legend column (260px).
+- One shared floating #tooltip (panel; colored dot + bold title + body).
+- Footer: "Data as of ~Sept 2026, see crude.xlsx, refined.xlsx and
+  fields.xlsx for full sourcing, percentages, and routing notes behind
+  every figure shown here."
 
-------------------------------------------------------------------------
-## 3. Code architecture — CRUDE and REFINED are independent (user rule)
-Three <script> blocks:
- 1. Toggle — the ONLY shared JS. Shows one view, hides the other, hides
+========================================================================
+## 4. Code architecture — THE VIEWS ARE INDEPENDENT (user rule)
+Four <script> blocks, in this order:
+ 1. Toggle — the ONLY shared JS: shows one view, hides the others, hides
     the tooltip.
- 2. CRUDE  — wrapped in its own IIFE: own data, own svg, own legend, own
-    helpers, own state.
- 3. REFINED — its own IIFE with its OWN COPIES of every helper (duplicated
-    on purpose; never share code between the two views).
-- Every selector is scoped to the view's own svg / legend (svg.selectAll,
-  legend.selectAll), never global d3.selectAll.
-- SVG <defs> ids are document-global, so they're unique per view:
+ 2. CRUDE  IIFE  (…"end CRUDE")
+ 3. REFINED IIFE (…"end REFINED")
+ 4. FIELDS IIFE
+Each IIFE has its OWN data, svg, legend, state and its OWN COPY of every
+helper (tooltip, curvePath, diamond, zoom…). Duplication is deliberate:
+never share code between views. Selectors are scoped to the view's own
+svg / legend (svg.selectAll, legend.selectAll) — never global.
+SVG <defs> ids are document-global, so they are unique per view:
   crude: arrow, canadaStripes, kazakhstanStripes, latamStripes,
-  azerbaijanStripes;
-  refined: refined-arrow.
-- Shared CSS only (classes .country, .route, .glow, .chokepoint,
-  .label-text, .legend-*, .line-key*, .faded, .hovered, .selected, .dimmed).
+         azerbaijanStripes · refined: refined-arrow · fields: none.
+Shared CSS classes only: .country .route .glow .chokepoint
+.chokepoint-halo .field .label-text .legend-* .line-key* .zoom-controls
+.faded .hovered .selected .dimmed, plus .fields-legend/.company-list/.tag.
 
-Each view's script has the same structure:
-  groups[] → groupByKey · countryInfo{} · euHub · euMemberCountries (Set)
-  · chokepoints[] · originLabels[] / destLabels[] · routes[] · destGlow[]
-  · render (projection, defs, tooltip helpers, focus logic, legend,
-    then d3.json(topology) → countries, glows, routes, chokepoints, hub
-    markers, labels).
+Common to all three maps:
+- Projection d3.geoNaturalEarth1().scale(200).translate([420,270]),
+  viewBox 0 0 960 500 (shifted left: empty Pacific cropped; Hawaii and far
+  Arctic fall outside; Pacific routes exit at [-178,32], re-enter [178,32]).
+- Land: landFill #262623, stroke #4a4944.
+- Zoom & pan: d3.zoom on the view's svg (crude/refined 1–8×, fields 1–12×),
+  wheel/pinch + drag, +/−/⟲ buttons top-left. Double-click zoom disabled
+  (double-click = select/deselect). EVERYTHING is drawn inside one
+  <g class="zoom-layer"> — append new things there, not to svg.
+  On-screen size stays constant: CSS var --k (set on the svg) divides
+  stroke widths/dasharrays; the zoom handler divides radii (glows, hub
+  circles via data-r, field circles), [data-sw] stroke widths, chokepoint
+  diamond size, label font-size and dx/dy, and (crude) hatch
+  patternTransform.
+- Click the sea (empty svg) = reset every focus.
+- Country names in data must match the topology's properties.name
+  exactly ("United States of America", "United Kingdom", "South Korea",
+  "North Korea", "United Arab Emirates", "Côte d'Ivoire", "Congo").
+  "UK" is always written "UK" in labels and titles.
 
-------------------------------------------------------------------------
-## 4. Rendering constants (both views identical)
-- Projection: d3.geoNaturalEarth1().scale(200).translate([420,270]),
-  svg viewBox 0 0 960 500. (Zoomed/shifted left so the empty Pacific is
-  cropped and the Middle East/Asia are larger; Hawaii and the far Arctic
-  fall outside. The Panama→Asia routes exit the left edge at [-178,32]
-  and re-enter at [178,32].)
-- Land: untracked countries landFill #262623 / stroke #4a4944.
-  Importer countries importFill #43423e / stroke #5e5d57 (slightly lighter
-  gray). Colored countries use their group color + group stroke.
-- Routes: quadratic curves through ordered waypoints (curvePath with a
-  per-route `bend`), stroke = group color, width 1.7, opacity 0.95,
-  arrowhead at the end; dash:true → dasharray "4 3".
+========================================================================
+## 5. CRUDE and REFINED — shared design (each view has its own copy)
+Data per view: groups[] (+groupByKey) · countryInfo{} · euHub ·
+euMemberCountries (Set) · chokepoints[] · originLabels[]/destLabels[] ·
+routes[] · destGlow[] (refined also singaporeHub).
+- countryInfo[topologyName] = {group (key or null = importer), note,
+  exports:[{to,pct}], imports:[{from,pct}]}. Each list sums to exactly
+  100, or is a single {None/0} row.
+- Colored countries = group color + group stroke. Importers (group null)
+  and EU members: importFill #43423e / stroke #5e5d57.
+- EU-27 members hover/click as ONE entity "EU" (euHub: point [15,48],
+  hollow circle r6 stroke #e0ded4; its own imports list). Refined
+  excludes Netherlands and Belgium (they are the ARA hub there).
+- Routes: {pts:[[lon,lat],…] waypoints exporter→importer, group, dash,
+  bend, from:[entities], to:[entities], via?:[chokepoint names],
+  minor? (crude only), label, detail}. Drawn as quadratic curves
+  (curvePath with per-segment `bend`), width 1.7, opacity 0.95,
+  arrowhead at the end; dash:true → "4 3". from/to hold topology names,
+  'EU' or 'Singapore' (empty for regions like "East Africa"); every
+  route MUST have them — isolation depends on them.
 - destGlow: translucent circles at destinations, one per incoming group
-  color (crude r=20, refined r=16, opacity 0.22).
-- Chokepoints: small gray diamonds (#888780), hover tooltip, labeled.
-- Hub markers: EU = hollow circle r6 stroke #e0ded4 at [15,48];
-  refined also Singapore = teal-filled circle r5 at [103.8,1.35]
-  (Singapore isn't a polygon at 110m resolution).
-- Labels: white 11px text at [lon,lat] + dx (default 8) / dy. Every
-  country with data has a visible name (user rule), EXCEPT North Korea
-  on crude (label removed on purpose: too small). The United Kingdom is
-  always written "UK" (labels and hover titles).
+  color (crude r20, refined r16, opacity 0.22).
+- Labels: white 11px at [lon,lat] + dx (default 8) / dy. Every country
+  with data has a visible label (user rule), except North Korea on crude.
+- Hover: country → name, group (or "Importer…"), note, "Export (100%)"
+  and "Import (100%)" lists · route → label + detail · hub → its info.
+- FOUR mutually exclusive focus modes (state vars in each IIFE; picking
+  one clears the others; clicking the same thing again or the sea resets):
+  * activeGroup   — legend oil type/exporter row: its countries + routes
+    stay, the rest fades, other legend rows dim.
+  * activeCountry — click a country / EU hub / Singapore: its arrows in
+    and out bright, countries at the other ends full, the rest faded,
+    clicked entity outlined white.
+  * activeRoute   — click an arrow: only it bright, its from/to countries
+    full + white outline, glow only at its end.
+  * activeChoke   — click a chokepoint: every route through it bright
+    (crude: minor ones shown too), their end countries full + outlined,
+    other chokepoints fade, clicked diamond outlined white.
+- STRATEGIC CHOKEPOINTS (8, both views; user rule): Strait of Hormuz
+  [56.25,26.6], Bab-el-Mandeb [43.4,12.6], Suez Canal [32.3,30.5], Strait
+  of Malacca [100.5,3.5], Panama Canal [-79.5,9], Cape of Good Hope
+  (crude [18,-34], refined [18,-34.4]), Danish Straits [11,56], Turkish
+  Straits [29,41.1]. Each: {name, control, c, dx?, dy?, detail}.
+  Style (per-view consts chokeColor '#ffd84d', chokeSize 6.5): yellow
+  diamond, black stroke, translucent yellow halo ring (.chokepoint-halo
+  r11) and bold yellow label.
+  HOVER (user rule): FIRST "Controlled by: …", then detail, then "Flows
+  through it (n):" list, then "Click to isolate."
+  Controlled by: Hormuz = Iran (north) + Oman (Musandam, lanes in Omani
+  waters) · Bab-el-Mandeb = Yemen + Djibouti (Eritrea nearby; Houthi
+  attacks since late 2023) · Suez = Egypt (Suez Canal Authority) ·
+  Malacca = Malaysia, Indonesia, Singapore (joint patrols) · Panama =
+  Panama (Canal Authority since 1999) · Cape = South Africa's coast, open
+  ocean, nobody can close it · Danish Straits = Denmark (+ Sweden on the
+  Øresund; 1857 Copenhagen Convention) · Turkish Straits = Turkey (1936
+  Montreux Convention).
+  routesThrough(cp) = routes with a waypoint on cp.c (tolerance: crude
+  1.1°, refined 0.5°) OR naming it in via[]. A new route that crosses a
+  chokepoint needs a waypoint on it or a via tag.
+- Legend: title + hint ("Click a type, a country or a chokepoint to
+  isolate it on the map. Scroll or pinch to zoom, drag to pan.") ·
+  clickable group rows · "ROUTES:" solid/dotted key · "STRATEGIC
+  CHOKEPOINTS (8):" key listing them.
 
-------------------------------------------------------------------------
-## 5. Interactions (both views)
-- Zoom & pan (added 2026-09-23): d3.zoom on each view's svg, scale 1–8×,
-  wheel/pinch + drag, +/−/⟲ buttons (.zoom-controls, top-left of the map).
-  Double-click zoom is disabled (double-click = select/deselect). All map
-  content is drawn inside one <g class="zoom-layer"> — anything new must be
-  appended to zoomLayer, not svg, or it won't move with the map.
-  Constant on-screen size while zoomed: CSS var --k (set on the svg) divides
-  .country/.route stroke widths and .route.dashed dasharray (arrowheads follow
-  stroke width); the zoom handler rescales glows (r/k), chokepoint diamonds,
-  [data-r]/[data-sw] hub markers, label font-size and dx/dy offsets, and
-  (crude) the hatch patterns' patternTransform.
-- Hover country → tooltip: name, group name (or "Importer (not part of a
-  colored group)"), note, then "Export (100%)" list and "Import (100%)"
-  list. Hover route → label + detail. Hover chokepoint/hub → its info.
-- EU-27 members all hover/click as ONE entity "EU" (euHub data).
-  Refined excludes Netherlands and Belgium (they're the ARA hub there).
-- Three mutually exclusive focus modes (state vars in each IIFE):
-  * activeGroup — click a legend oil type: its countries + its routes
-    stay, everything else fades; other legend rows dim.
-  * activeCountry — click a country (or EU hub / Singapore marker): its
-    arrows in and out stay bright, all other arrows fade; countries at
-    the other ends stay full; everything else fades; the clicked entity
-    gets a white outline (.country.selected).
-  * activeRoute — click an arrow: only that arrow bright, the countries
-    in its from/to full + white outline, everything else faded, glow only
-    at its end.
-  Clicking the same thing again, the sea, or an untracked country resets.
-  Selecting one mode clears the other two.
-- Every route carries `from` / `to` arrays of entity names (topology
-  names, 'EU', 'Singapore'; empty when the end is a region like "East
-  Africa"). Country/arrow isolation depends on them — every new route
-  MUST have from/to.
-- Crude `minor:true` routes are hidden (display:none) on the overview and
-  only shown when one of their countries, their oil type, or the arrow
-  itself is selected.
-- Legend hint text: "Click a type or a country to isolate it on the map".
-
-------------------------------------------------------------------------
+========================================================================
 ## 6. CRUDE view
-Legend title "OIL TYPE:". Groups = crude family, legend in this order:
-| key   | name                                      | color   | stroke  | style | desc / benchmark |
-|-------|-------------------------------------------|---------|---------|-------|------------------|
-| me    | Middle East (Iran, Saudi Arabia, Iraq)    | #3fa34d | #245e2c | solid | Medium-heavy, sulfuric (sour) crude. |
-| usa   | USA                                       | #eda100 | #8a5f00 | solid | (WTI) Light crude, golden color, thin and flows easily. |
-| can   | Canada                                    | #eda100 | #8a5f00 | hatch | Light-medium; linked to but distinct from the US system. |
-| ven   | Venezuela                                 | #2a78d6 | #0c447c | solid | Extra-heavy crude, very dark, extremely thick. |
-| latam | Latin America (Brazil, Mexico)            | #2a78d6 | #0c447c | hatch | Grouped by region, not crude type (Brazil pre-salt medium/sweet, Mexico Maya heavy/sour). |
-| rus   | Russia                                    | #e34948 | #8a1f1e | solid | Medium crude, dark brown, moderate thickness. |
-| kaz   | Kazakhstan                                | #e34948 | #8a1f1e | hatch | CPC pipeline into Russia's Black Sea export system. |
-| nk    | North Korea                               | #e34948 | #8a1f1e | hatch | Within Russia's sphere of influence (political grouping); sanctioned, small capped imports. |
-| afr   | Africa (Nigeria, Libya, Algeria, Angola)  | #eb6834 | #993c1d | solid | Light, sweet and waxy. |
-| eu    | North Sea (Norway, UK)                    | #e87ba4 | #993556 | solid | (BRENT) Light, sweet. |
-| aze   | Azerbaijan                                | #e87ba4 | #993556 | hatch | Azeri Light: light, sweet, Brent-priced; BTC pipeline to Ceyhan, bypassing Russia. |
-Hatched = diagonal stripes of the color over landFill (SVG patterns
-canadaStripes / kazakhstanStripes (Kazakhstan + North Korea) /
-latamStripes (Brazil + Mexico) / azerbaijanStripes); legend swatch is a striped gradient.
+Legend title "OIL TYPE:". Groups = crude family (in legend order):
+| key   | name                                     | color   | stroke  | style |
+| me    | Middle East (Iran, Saudi Arabia, Iraq)   | #3fa34d | #245e2c | solid | Medium-heavy, sour
+| usa   | USA                                      | #eda100 | #8a5f00 | solid | (WTI) light
+| can   | Canada                                   | #eda100 | #8a5f00 | hatch | light-medium, linked to US
+| ven   | Venezuela                                | #2a78d6 | #0c447c | solid | extra-heavy
+| latam | Latin America (Brazil, Mexico)           | #2a78d6 | #0c447c | hatch | grouped by region
+| rus   | Russia                                   | #e34948 | #8a1f1e | solid | medium (Urals)
+| kaz   | Kazakhstan                               | #e34948 | #8a1f1e | hatch | CPC into Russia's Black Sea system
+| nk    | North Korea                              | #e34948 | #8a1f1e | hatch | Russian sphere (political), sanctioned
+| afr   | Africa (Nigeria, Libya, Algeria, Angola) | #eb6834 | #993c1d | solid | light, sweet, waxy
+| eu    | North Sea (Norway, UK)                   | #e87ba4 | #993556 | solid | (BRENT) light, sweet
+| aze   | Azerbaijan                               | #e87ba4 | #993556 | hatch | Azeri Light, BTC bypasses Russia
+Hatch = SVG stripe patterns of the color over landFill (canadaStripes,
+kazakhstanStripes for KZ+NK, latamStripes for BR+MX, azerbaijanStripes);
+legend swatch = striped gradient.
+- Importers (gray): China, India, South Korea, Turkey, Japan, Cuba,
+  Israel + EU-27 (EU entity).
+- euHub imports = Eurostat Q1 2026 (HARD-SOURCED, do not edit): USA 17.8,
+  Norway 16.6, Kazakhstan 9.6, Libya 9, Saudi Arabia 6.8, Nigeria 5.8,
+  Iraq 5.8, Russia 0.8, "Azerbaijan (est.)" 4.5 (project estimate carved
+  from the remainder), Other suppliers 23.3.
+- User-confirmed modelling: USA is ONE point [-102,31] "USA
+  (imports/exports)" (net importer; no "Gulf Coast" on crude). UK = North
+  Sea producer "UK (imports/exports)" (exports EU 60/China 15/USA 10/
+  South Korea 5/Other 10; imports Norway 30/USA 20/Other 50). Brazil →
+  China 45%. Mexico → USA 60%. Azerbaijan = North Sea pink hatch (Brent-
+  priced; BTC bypasses Russia): exports EU 65/Israel 20/Turkey 10/Other 5.
+  Israel = importer: Azerbaijan 45 (Kpler 2025)/Kazakhstan 25/Other 30.
+  Kazakhstan exports EU 65/China 20/Israel 10/Other 5. North Korea imports
+  China 65 (Dandong pipeline)/Russia 30/Other 5 — red for Russian
+  influence, not supply. Cuba note: dependent on Venezuelan oil.
+- Labels: producers "(exports)", importers "(imports)", USA and UK
+  "(imports/exports)", Canada and Kazakhstan plain; North Korea none.
+  Tuned offsets: Israel dx -96 dy -12 (over the Med), Turkey (imports)
+  dx -100 dy -7, Kazakhstan dy -8, Azerbaijan at [48,40.4]. Chokepoint
+  labels: Bab-el-Mandeb dx -100, Suez dx -6 dy 16, Cape dy 14, Danish
+  dx -92 dy -4, Turkish dx 8 dy -18.
+- Routes: 73. First 27 = core story (Iran→China, Saudi/Iraq→EU via Suez,
+  USA→EU/UK/Asia via Panama and Cape, Canada→USA, Venezuela→USA/Cuba/
+  China, Brazil→China via Cape, Mexico→USA, Russia→China pipeline/India/
+  North Korea, Africa→EU, UK→EU and →China via Cape, Norway→EU,
+  Azerbaijan→EU and →Israel via BTC/Ceyhan (dotted), Kazakhstan→EU).
+  Then 45 "import connections" so that EVERY flow between two mapped
+  entities in countryInfo/euHub has an arrow and every arrow has data.
+  Visibility: an import-connection route is always shown if it is ≥20% of
+  the exporter's exports or ≥30% of the importer's imports; otherwise
+  minor:true (hidden until its country, oil type, arrow or a chokepoint
+  it crosses is selected). Plus the Iraq→EU "Cape of Good Hope diversion"
+  (dotted, minor; Red Sea attacks).
+  China→North Korea has group null → gray #a3a29c via routeColor().
+  Dotted = pipeline/overland, the long way round, or disrupted flow.
+- via tags: Malacca on every Gulf→East Asia and Cape→East Asia route;
+  Iraq→EU = Hormuz + Bab-el-Mandeb; Iraq→USA = Bab-el-Mandeb;
+  Saudi→Brazil = Hormuz; Russia→India = Danish + Turkish + Suez +
+  Bab-el-Mandeb (drawn straight); Russia→Cuba = Danish; Kazakhstan→EU and
+  Russia→Turkey = Turkish; the four [178,32] Pacific segments = Panama.
+  Venezuela→China (dark fleet) untagged.
+- Legend: oil-type rows → ROUTES key (Solid = direct tanker; Dotted =
+  pipeline/overland, the long way round, or a disrupted flow) →
+  chokepoints. No "Importers" row (user: "the legend is only for oil").
 
-countryInfo (colored): Iran, Saudi Arabia, Iraq (me); United States of
-America + alias "United States" (usa); Canada (can); Venezuela (ven);
-Brazil, Mexico (latam); Russia (rus); Kazakhstan (kaz); North Korea (nk);
-Nigeria, Libya, Algeria, Angola (afr); Norway, United Kingdom (eu);
-Azerbaijan (aze).
-Importers (group:null → importFill gray): China, India, South Korea,
-Turkey, Japan, Cuba, Israel — plus all EU-27 members (EU entity).
-euHub imports are Eurostat Q1 2026 (hard-sourced; do not edit):
-USA 17.8, Norway 16.6, Kazakhstan 9.6, Libya 9, Saudi Arabia 6.8,
-Nigeria 5.8, Iraq 5.8, Russia 0.8 — plus "Azerbaijan (est.)" 4.5 (project
-estimate, NOT Eurostat; carved out of the remainder) and Other suppliers
-23.3.
-Key modelling decisions (user-confirmed):
-- USA is ONE point [-102,31] labeled "USA (imports/exports)" — the US is a
-  net crude importer. No "USA Gulf Coast" anywhere on crude.
-- UK is a North Sea producer: exports EU 60 / China 15 / USA 10 / South
-  Korea 5 / Other 10; imports Norway 30 / USA 20 / Other 50; label
-  "UK (imports/exports)".
-- Norway label "Norway (exports)". Cuba note: "Remains heavily dependent
-  on Venezuelan oil supplies and subsidized shipments for its energy and
-  power generation needs."
-- Brazil: China is the primary destination (45%). Mexico: USA dominant
-  buyer (60%).
-- Azerbaijan (added 2026-09-23): Brent-type crude, so hatched North Sea
-  pink, NOT Russia red (BTC deliberately bypasses Russia). Exports EU 65 /
-  Israel 20 / Turkey 10 / Other 5. Turkey imports now include Azerbaijan 8 (Other
-  20 -> 12). Label "Azerbaijan (exports)" at [48,40.4]; Kazakhstan label
-  moved ABOVE its point (dy -8) to make room.
-- Israel (added 2026-09-23): importer (gray), point [35,32.8], label
-  "Israel (imports)" placed LEFT over the Med (dx -96, dy -12) to clear
-  Algeria/Iraq labels. Imports Azerbaijan 45 (Kpler 2025) / Kazakhstan 25 /
-  Other 30 (Brazil, Gabon, Nigeria, Angola not drawn — user chose only
-  AZ + KZ). Kazakhstan exports now EU 65 / China 20 / Israel 10 / Other 5.
-- North Korea imports China 65 (Dandong pipeline, the real main source) /
-  Russia 30 / Other 5; colored red for Russian influence, not supply.
-Chokepoints: Strait of Hormuz [56.25,26.6], Suez Canal [32.3,30.5] (label
-below, dy 14), Panama Canal [-79.5,9], Cape of Good Hope [18,-34].
-Labels: Iran/Saudi Arabia/Iraq/Venezuela/Russia/Nigeria/Libya/Algeria/
-Angola/Brazil/Mexico/Norway/Azerbaijan "(exports)"; Canada; Kazakhstan; China/EU/
-South Korea/India/Cuba/Turkey/Japan/Israel "(imports)"; USA and UK
-"(imports/exports)".
-Routes: 72 arrows. The first 27 are the core story routes (Iran→China,
-Saudi/Iraq→EU via Suez, USA→EU/UK/Asia via Panama + Cape, Canada→USA,
-Venezuela→USA/Cuba/China, Brazil→China via Cape, Mexico→USA,
-Russia→China (pipeline)/India/North Korea, Africa→EU, UK→EU, UK→China via
-Cape, Norway→EU, Azerbaijan→EU and →Israel via BTC/Ceyhan (dotted),
-Kazakhstan→EU). Then an "import connections" block of 45
-routes so that EVERY flow in countryInfo/euHub between two mapped
-entities has an arrow (verified by script both ways: no data flow without
-an arrow, no arrow without data).
-Visibility rule for that block: always visible if >=20% of the exporter's
-exports or >=30% of the importer's imports (12 routes, e.g. Saudi→China/
-Japan/South Korea, Iraq→China, Russia→Turkey, USA→Canada/Brazil,
-Norway→UK, Angola→China, Kazakhstan→China, Nigeria→India, China→North
-Korea); everything else is minor:true (33 routes, incl. Azerbaijan→
-Turkey and Kazakhstan→Israel).
-China→North Korea has group:null → drawn gray (#a3a29c) via routeColor().
-Dotted (dash) routes = pipeline/overland, the long way round, or a
-disrupted/irregular flow.
-Legend: oil-type rows (clickable) then a "ROUTES:" key — Solid = direct
-tanker route; Dotted = pipeline / overland, the long way round, or a
-disrupted flow. No "Importers" row (user: "the legend is only for oil").
-
-------------------------------------------------------------------------
+========================================================================
 ## 7. REFINED view
-Legend title "EXPORTER / HUB:". Groups = refining/export ROLE, not chemistry:
-| key  | name                                      | color   | stroke  | desc |
-|------|-------------------------------------------|---------|---------|------|
-| usa  | USA                                       | #eda100 | #8a5f00 | Gasoline & diesel from the Gulf Coast — the world's biggest refined exporter. |
-| ind  | India                                     | #9b6dd6 | #553584 | Jamnagar, the largest refining complex on Earth — diesel and jet fuel. |
-| rus  | Russia                                    | #e34948 | #8a1f1e | Diesel/gasoil, rerouted away from the EU after the 2023 product embargo. |
-| gulf | Gulf refiners (Saudi Arabia, Kuwait, UAE) | #3fa34d | #245e2c | New mega-refineries: Jazan, Al-Zour, Ruwais. |
-| sgp  | Singapore                                 | #2bb3a3 | #15665c | Asia-Pacific refining, blending and trading hub — imports to re-export. |
-| ara  | ARA hub (Netherlands, Belgium)            | #4cb5e8 | #1d6790 | Amsterdam-Rotterdam-Antwerp: Europe's blending and re-export hub. |
-| kor  | South Korea                               | #eb6834 | #993c1d | Diesel, jet fuel and naphtha from SK Energy, GS Caltex, S-Oil. |
-| chn  | China                                     | #2a78d6 | #0c447c | Very large exporter when Beijing opens export quotas; mostly regional. |
-No hatched groups.
-countryInfo was GENERATED from refined.xlsx "Export-Import % (map data)"
-(all blocks sum to 100 or 0); notes written by hand. Colored: USA, India,
-Russia, Saudi Arabia, Kuwait, UAE, Singapore (hub marker), Netherlands,
-Belgium, South Korea, China. Importers (gray): Mexico, Brazil, Australia,
-Indonesia, Nigeria, Turkey, Israel, Japan, Vietnam, United Kingdom, Canada, and EU
-members except NL/BE. EU hub = refined diesel import mix (USA 22, India
-18, Saudi 12, UAE 9, Kuwait 7, Turkey 6, Russia 0 (embargo), Other 26).
-The US here is "USA Gulf Coast (exports)" — correct for refined (net
-exporter). UK is import-only here (correct: refining capacity shrank).
-Chokepoints: Hormuz, Bab-el-Mandeb [43.4,12.6] (label left), Suez,
-Strait of Malacca [100.5,3.5], Panama.
-Labels: USA Gulf Coast (exports), India (Jamnagar), Russia (Baltic),
-Russia (Black Sea), Saudi Arabia, Kuwait, UAE, Netherlands (ARA), Belgium
-(ARA), South Korea, China, Singapore hub, Mexico, Pacific Latin America,
-Brazil, Nigeria / West Africa, East Africa, Turkey, EU (imports),
-Australia, Indonesia, Israel (dx -44, dy 6), Japan, Vietnam, UK, Canada.
-Routes: 31 (one row each in refined.xlsx "Export flows"). Dotted =
-indirect flows: Russia→UAE (Fujairah blending), Turkey→EU (Russian-origin
-re-exports; from:["Turkey","Russia"]), ARA→EU inland (barges). Gulf/Red
-Sea routes use sea waypoints [59,21] and [51,13.5] to avoid crossing
-Arabia. No minor routes.
-Israel (added 2026-09-23): importer; refines most of its own fuel, imports
-are a top-up. Imports Russia 50 / Greece-Italy-Cyprus 25 (hover only, EU
-hub is import-only) / USA 10 (JP-8) / Other 15. Arrows: Russia→Israel
-(Black Sea, Turkish Straits) and USA→Israel (via Gibraltar). US and Russia
-exports each gained Israel 1 (taken from their Other).
-Legend: exporter rows + "ROUTES:" key — Solid = direct tanker route;
-Dotted = indirect flow (re-export, blending / transshipment) or inland
-barge / pipeline.
+Legend title "EXPORTER / HUB:". Groups = refining/export ROLE:
+| key  | name                                      | color   | stroke  |
+| usa  | USA                                       | #eda100 | #8a5f00 | Gulf Coast gasoline & diesel
+| ind  | India                                     | #9b6dd6 | #553584 | Jamnagar
+| rus  | Russia                                    | #e34948 | #8a1f1e | rerouted after 2023 EU embargo
+| gulf | Gulf refiners (Saudi Arabia, Kuwait, UAE) | #3fa34d | #245e2c | Jazan, Al-Zour, Ruwais
+| sgp  | Singapore                                 | #2bb3a3 | #15665c | blending/trading hub
+| ara  | ARA hub (Netherlands, Belgium)            | #4cb5e8 | #1d6790 | Amsterdam-Rotterdam-Antwerp
+| kor  | South Korea                               | #eb6834 | #993c1d | SK Energy, GS Caltex, S-Oil
+| chn  | China                                     | #2a78d6 | #0c447c | quota-driven, regional
+No hatching.
+- countryInfo mirrors refined.xlsx "Export-Import % (map data)".
+  Colored: USA, India, Russia, Saudi Arabia, Kuwait, UAE, Singapore (hub
+  marker: teal circle r5 at [103.8,1.35] — not a polygon at 110m),
+  Netherlands, Belgium, South Korea, China. Importers: Mexico, Brazil,
+  Australia, Indonesia, Nigeria, Turkey, Israel, Japan, Vietnam, UK,
+  Canada, EU members except NL/BE.
+- EU hub = diesel import mix: USA 22, India 18, Saudi 12, UAE 9, Kuwait 7,
+  Turkey 6, Russia 0 (embargo), Other 26.
+- US label "USA Gulf Coast (exports)" (net refined exporter). UK import-
+  only. Israel: Russia 50 / Greece-Italy-Cyprus 25 (hover only) / USA 10
+  (JP-8) / Other 15.
+- Labels: USA Gulf Coast (exports), India (Jamnagar), Russia (Baltic)
+  [29,60], Russia (Black Sea) [37.8,44.7], Saudi Arabia, Kuwait (dx -30
+  dy 12), UAE, Netherlands (ARA) (dy 6), Belgium (ARA), South Korea,
+  China, Singapore hub, Mexico, Pacific Latin America, Brazil, Nigeria /
+  West Africa, East Africa, Turkey, EU (imports), Australia, Indonesia,
+  Israel (dx -44 dy 6), Japan, Vietnam, UK, Canada. Chokepoint labels:
+  Bab-el-Mandeb dx -100, Cape dy 14, Danish dx -92 dy -4, Turkish dx -100
+  dy 16.
+- Routes: 42 (one row each in "Export flows"; USA→Asia is one row drawn
+  as 3 segments wrapping at the map edge). Includes, so every chokepoint
+  is used: India→EU and Gulf→EU "Cape of Good Hope diversion" (dotted;
+  Suez arrows stay as the short route), India→Brazil / West Africa / US
+  East Coast via the Cape, USA→Asia via Panama (→ South Korea, China),
+  India→Indonesia via Malacca, Gulf (Saudi, UAE)→India via Hormuz, Russia
+  (Black Sea)→Singapore via Turkish/Suez/Bab-el-Mandeb/Malacca, Russia
+  Baltic→West Africa / Brazil through the Danish Straits waypoint.
+  Dotted = indirect: Russia→UAE (Fujairah blending), Turkey→EU (Russian-
+  origin re-exports, from:["Turkey","Russia"]), ARA→EU inland (barges),
+  the Cape diversions. Gulf/Red Sea routes use sea waypoints [59,21] and
+  [51,13.5] so they don't cross Arabia. No minor routes.
+- via tags: India→Singapore = Malacca; Russia→Turkey and Russia→UAE =
+  Turkish Straits; USA→South Korea / China Pacific segments = Panama.
+- Legend: exporter rows → ROUTES key (Solid = direct tanker; Dotted =
+  indirect flow — re-export, blending/transshipment — or inland barge /
+  pipeline) → chokepoints.
 
-------------------------------------------------------------------------
-## 8. Data conventions
-- Each country: exports[] and imports[] each sum to exactly 100%, or a
-  single {None, 0} row. Names in countryInfo keys must match the
-  topology's properties.name exactly ("United States of America",
-  "United Kingdom", "South Korea", "North Korea", "United Arab Emirates").
-- Hard-sourced figures: crude EU hub (Eurostat Q1 2026), Canada's import
-  split (CER), Iran 91% to China (Statista/UANI). Everything else is this
-  project's estimate — the xlsx "Basis / notes" column says which.
-- The 2026 scenario (Iran war, Venezuela blockade, Jan 2026 Maduro
-  capture) is speculative/illustrative, not verified news. Directions of
-  flows are real patterns; exact percentages are estimates.
-- openpyxl gotcha: insert_rows does NOT move merged cells (the "EU-27
-  member states" note row in crude "Export-Import %" is merged B:E).
-  Unmerge before inserting, re-merge after.
+========================================================================
+## 8. FIELDS view — who controls the oil
+Purpose: crude still, but tracking COMPANIES, especially the Seven
+Sisters. 97 fields: 86 giant fields/basins (~60% of world crude) + 11
+smaller Eni-run fields. Not every field (~65,000 exist).
 
-------------------------------------------------------------------------
-## 9. Checklist when changing data
-1. Update the xlsx sheet (Export-Import %, Export flows, Groups…).
-2. Update the view's countryInfo / routes / labels in OIL.html.
-3. Every new route needs from/to (and, on crude, minor:true unless it
-   meets the visibility rule). Every data flow between two mapped
-   entities needs an arrow.
-4. Every country with data needs a visible label (except North Korea).
-5. Check sums = 100, re-render headlessly (Chrome --headless --screenshot)
-   and look for label overlaps and JS errors.
-6. Keep CRUDE and REFINED code separate.
+### 8.1 Data
+companies{} — 28 entries: key → {name, flag (emoji), nat (nationality),
+own (private / state-owned / state-controlled text), label? (short map
+label), aka? (other names, for stake matching), color (UNIQUE), sister?
+(Seven Sisters lineage), rival? (Eni only)}. Sorted by oil controlled:
+  exxon          ExxonMobil          #e34948 American   13 fields ~13,700 kb/d  Sister
+  aramco         Saudi Aramco        #1fb5a8 Saudi       9        ~10,400
+  chevron        Chevron             #2a78d6 American    9        ~4,040        Sister
+  bp             BP                  #3fa34d British     9        ~3,900        Sister
+  shell          Shell               #eda100 British (Anglo-Dutch until 2022) 8 ~2,885 Sister
+  koc            Kuwait Oil Company  #f48fb1 Kuwaiti     2  label "KOC (Kuwait)"
+  nioc           NIOC                #a66bd6 Iranian     5
+  petrochina     PetroChina          #ff7a3d Chinese     4  aka CNPC, CNODC
+  rosneft        Rosneft             #ff9e9e Russian     4
+  eog            EOG Resources       #d4a373 American    1  label "EOG"
+  equinor        Equinor             #ff5c8a Norwegian   2
+  eni            Eni                 #e040fb Italian    11  aka Vår Energi; rival tag
+  noclibya       National Oil Corporation (Libya) #c7ea46 Libyan 3  label "NOC Libya";
+                 aka NOC Libya, NOC, Waha Oil, AGOCO, Akakus
+  pemex          Pemex               #06d6a0 Mexican     2
+  petrobras      Petrobras           #9ef01a Brazilian   1
+  cnooc          CNOOC               #43c6db Chinese     1
+  qatarenergy    QatarEnergy         #d6457a Qatari      2
+  sinopec        Sinopec             #ffe27a Chinese     1
+  adnoc          ADNOC               #7cc8f2 Emirati     1
+  lukoil         Lukoil              #b08968 Russian     1  aka LukArco
+  sonatrach      Sonatrach           #7ee8c8 Algerian    1
+  tatneft        Tatneft             #c3a6ff Russian     1
+  basra          Basra Oil Company   #b5d95a Iraqi       1  label "Basra Oil Co."
+  renaissance    Renaissance Africa Energy #00c2ff Nigerian 1  label "Renaissance"
+  pertamina      Pertamina           #e76f51 Indonesian  1
+  totalenergies  TotalEnergies       #8c6cff French      1
+  conocophillips ConocoPhillips      #9aa5b1 American    1
+  ongc           ONGC                #ffadad Indian      1
+(Exact ownership texts and aka lists are in OIL.html and the Companies
+sheet.) Seven Sisters lineage: ExxonMobil = Standard Oil of New Jersey
+(Esso→Exxon) + Standard Oil Co. of New York (Socony→Mobil), merged 1999;
+Chevron = Standard Oil of California (Socal) + Gulf Oil (1984) + Texaco
+(2001); BP = Anglo-Persian (Anglo-Iranian); Shell = Royal Dutch Shell
+(60% Dutch / 40% British until unified in London 2022). Eni: never a
+Sister — the challenger; its founder Enrico Mattei coined "Seven Sisters".
 
-------------------------------------------------------------------------
-## 10. Known gaps / possible next steps
-- Refined: ~34 flows in the data have no arrow yet (crude is complete).
+fields[] — one object per field (one row each in fields.xlsx "Fields"):
+{name, owner (company key), country (display name: "USA", "UK", "UAE",
+"Kuwait / Saudi Arabia" for Wafra…), c [lon,lat], kbd (crude+condensate,
+thousand b/d, ~2025 est.; Iran pre-war), disc (year), op (operator text),
+opType ('sister'|'other'|'noc'), opSis (Sister key if a Sister operates,
+else null), partners [[company, % or null]], contract, note?, hist?,
+short? (legacy, unused)}. Known % sum to 100; null = unknown, not zero.
+Basins (Permian, Bakken, Eagle Ford, Athabasca, Vaca Muerta) are single
+markers with op "Many operators — largest: …" and partner lists without %.
+Coverage: Saudi Arabia 9, Kuwait 2 + Wafra, Iraq 7, Iran 5, UAE 5, Qatar
+2, Oman (Block 6/PDO), Kazakhstan 3, Russia 5, Norway 5, UK (Clair),
+Italy (Val d'Agri), Nigeria 5, Angola 3, Libya 5, Algeria 2, Egypt,
+Ghana, Côte d'Ivoire, Congo, USA 9 (incl. US Gulf and Alaska), Canada 3,
+Mexico 2, Brazil 5, Guyana, Venezuela 2, Argentina, China 4, India,
+Indonesia 2, Azerbaijan.
+
+### 8.2 Ownership / color rule (user rules)
+owner = a Seven Sisters successor if one is involved AT ALL — operator,
+subsidiary (Imperial Oil = 69.6% ExxonMobil; Azule = 50% BP) or partner
+stake/contract — taking the operator first, else the biggest known stake
+("if it's related to Exxon, color it Exxon"). Otherwise the operator /
+controlling company. Consequences: Upper Zakum, Kashagan, Block 17,
+Prudhoe Bay, Bacalhau, Athabasca, Permian → ExxonMobil; ADNOC Onshore
+fields (Bu Hasa, Bab, Asab) and Kirkuk → BP; Tupi, Mero, Sapinhoá, Block
+6, Val d'Agri (Eni-run, Shell 39%) → Shell; Orinoco, Lake Maracaibo,
+Bakken, Vaca Muerta → Chevron. Eagle Ford has no Sister → EOG.
+Sister detection sisterOf(name) = FIRST WORD in {ExxonMobil, Imperial,
+Esso, Chevron, BP, Shell, Azule} ("Aker BP"/"BPRL" are not BP;
+Sakhalin-1's seized Exxon share is written "Unallocated 30% (seized from
+ExxonMobil…)" so it doesn't count). No stripes/hatching (user rule).
+
+### 8.3 Rendering
+- Circle per field: r = 2.2 + sqrt(kbd)·0.13 (÷k on zoom), fill = owner
+  color, black 0.8 stroke; drawn biggest-first so small ones stay on top.
+- Countries with a field #33322e, others landFill.
+- MAP LABEL = the OWNER COMPANY's name (companies[k].label || name), NOT
+  the field name (user rule). Greedy placement: biggest field first, a
+  label is hidden if it overlaps one already placed; layoutLabels() re-
+  runs on zoom, on every focus change, and via a MutationObserver when
+  #fieldsView is un-hidden (labels can't be measured while hidden).
+
+### 8.4 Interactions
+- Hover a field — title "Field name (Country)" (user rule), then:
+  "Belongs to: <company> <flag> — <nationality> company" (FIRST, user
+  rule) · ownership line (private / state-owned…) · Seven Sisters lineage
+  or Eni's challenger line · if the owner doesn't operate: "<owner> is a
+  partner (stake or contract); the field is operated by <op>" (basins:
+  "is one of the main producers in this basin") · Operator · Concession
+  holders (equity %) [or "Companies involved" when any % unknown; Sister
+  names in their color] · Concession / contract · "Discovered <year> ·
+  ~<kbd> kb/d" · note · history (italic).
+  "Operates" test = opSis === owner, or the operator text contains the
+  owner's first name word or any aka.
+- Click a field = white outline on it + isolate ALL fields of the same
+  owner worldwide (activeKey). Click a company in the legend = the same
+  (ONLY the fields it owns — not fields where it merely has a stake).
+  Either way the other legend rows dim and the active row scrolls into
+  view. Click again / the sea = reset.
+- Hover a country = its fields with owners; click a country = isolate its
+  fields (activeCountry).
+- State: activeKey, activeField, activeCountry (mutually exclusive).
+
+### 8.5 Legend (user rules)
+- "COMPANIES — BY OIL CONTROLLED:" + hint ("Each color is one company.
+  Click a company (or a field) to isolate the fields it controls. Hover a
+  field for details and partners. …").
+- ALL 28 companies in a scrollable .company-list, sorted by oil
+  controlled (sum of kbd of owned fields). Row: color swatch, name, emoji
+  flag + nationality, "Seven Sisters" / "challenger" tag, "~X kb/d in N
+  fields · stakes in M more" (M from involved(): owner, Sisters via
+  f.sisters, others via aka whole-word matches in operator/partners).
+- Then "FIELD SIZE (crude + condensate output):" key (100 · 1,000 · 3,000
+  thousand barrels/day) and "97 oil fields, 28 companies…" line.
+- The legend is exactly as tall as the map, CSS only:
+  .fields-legend { align-self:stretch; contain:size } (the map sets the
+  row height; the list flexes and scrolls); under 760px wide it falls
+  back to max-height:70vh. Don't use a ResizeObserver (it fired too late).
+- Emoji flags show as 2-letter codes on Windows; nationality is always
+  written out too.
+
+========================================================================
+## 9. Data conventions
+- Hard-sourced: crude EU hub (Eurostat Q1 2026), Canada's import split
+  (CER), Iran 91% to China (Statista/UANI), Israel's crude from
+  Azerbaijan 45% (Kpler 2025) and refined from Russia 50% (Oil Change
+  International). Everything else = project estimate; the xlsx
+  "Basis / notes" columns say which.
+- Fields: stakes/outputs are best estimates (~2025) and change often
+  (e.g. Chevron bought Hess 2025 → Stabroek 30% and Bakken; BP Kirkuk
+  deal 2025; Shell sold its Niger Delta JV to Renaissance 2025; ExxonMobil
+  left West Qurna-1 2024 and Vaca Muerta 2024).
+- openpyxl gotcha: insert_rows does NOT move merged cells (crude
+  "Export-Import %" has a merged B:E note row) — unmerge, insert, re-merge.
+
+========================================================================
+## 10. Checklist for any change
+1. Update the xlsx AND OIL.html (they are hand-synced).
+2. Crude/refined: export/import lists sum to 100; every new route has
+   from/to (crude: minor:true unless it meets the visibility rule); every
+   flow between two mapped entities has an arrow; routes crossing a
+   chokepoint get a waypoint on it or a via tag; every country with data
+   has a label.
+3. Fields: owner set by the Sister-first rule; known % sum to 100; a new
+   company needs a companies{} entry with a UNIQUE color (and aka if it
+   appears under other names) and a Companies-sheet row.
+4. Keep the views' code separate; append map content to zoomLayer.
+5. Verify headlessly (Chrome, macOS path "/Applications/Google
+   Chrome.app/Contents/MacOS/Google Chrome"): copy OIL.html to a scratch
+   file with a test <script> injected before </body> (click
+   .type-btn[n], dispatch clicks/mouseenter, write results to a
+   data-attribute), then --headless --dump-dom (read results) or
+   --screenshot --window-size=1500,1000 --virtual-time-budget=9000.
+   Check JS syntax per <script> block with `node --check`. Look for label
+   overlaps and errors. Note: with --virtual-time-budget CSS transitions
+   freeze, so toggle buttons can look half-faded in screenshots — not a
+   bug. Last full FIELDS audit (2026-09-28): all tooltips complete, sums
+   OK, every click isolates only its owner, onshore fields inside their
+   country, 44 offshore fields at plausible distances.
+
+========================================================================
+## 11. Known gaps / next steps
+- Refined: ~25 flows in the data still have no arrow (crude is complete).
 - Arrows are thin (1.7px) — a wider invisible click area would help.
-- Latin America beyond Venezuela/Brazil/Mexico/Cuba is not tracked
-  (Colombia, Ecuador, Argentina, Guyana, Chile/Peru).
+- Crude/refined Latin America beyond Venezuela/Brazil/Mexico/Cuba isn't
+  tracked (Colombia, Ecuador, Argentina, Guyana, Chile/Peru).
 - EU is one hub point, not per-country destinations.
-- Figures should be re-verified periodically.
+- Fields: Wafa (Libya, mostly gas) left out; ExxonMobil's total is
+  inflated by counting whole basins (Permian, Athabasca) under the
+  Sister-first rule; several partner % unknown.
+- Re-verify figures periodically.

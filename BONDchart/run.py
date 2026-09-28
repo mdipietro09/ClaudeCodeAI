@@ -5,7 +5,7 @@ levels + a full price-level (100, 101, 102...) reference grid on the y-axis.
 run.py is the WHOLE PIPELINE — the only command needed:
 
     python3 run.py
-        AI maintenance (Ollama) -> PLOT.html -> FORECAST.html
+        AI maintenance (Ollama) -> BOND.html -> FORECAST.html
 
     python3 run.py "the forecast is really bad so do it again"
         Same, but the quoted instructions are passed to the local model
@@ -30,6 +30,14 @@ Requires: pandas, plotly, and a running Ollama server (fully local, free).
 llm = 'gemma4'
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
+ICON_CONVENTION = ('''Icon = the dominant driver of the week:
+    💥 for war, 
+    💵 for the FED, 
+    ⚠️ for macro economic data (like US inflation and unemployment),
+    🇪🇺 for the ECB,
+    🇺🇸 for USA, 🇮🇹 for Italy, 🇨🇳 for China, 🇷🇺 for Russia, 🇮🇷 for Iran (and other countries by their flag).'''
+)
+
 import json
 import re
 import sys
@@ -43,14 +51,14 @@ import plotly.graph_objects as go
 CSV_PATH = "data.csv"
 MACRO_PATH = "macro.xlsx"
 FORECAST_PATH = "forecast.xlsx"
-PLOT_OUT_PATH = "PLOT.html"
+PLOT_OUT_PATH = "BOND.html"
 FORECAST_OUT_PATH = "FORECAST.html"
 
 # Anchor drift (price points) beyond which the forecast gets re-anchored —
 # shared between the AI maintenance step and the printed report.
 REANCHOR_TOLERANCE = 0.30
 
-# tiny W/D pill-switch injected into both PLOT.html and FORECAST.html
+# tiny W/D pill-switch injected into both BOND.html and FORECAST.html
 # (plotly's native updatemenus buttons were rejected as too bulky)
 TOGGLE_SNIPPET = """
 <style>
@@ -229,20 +237,7 @@ def compute_levels(weekly):
 #    SKIPPED with a warning and the chart is still built from the
 #    existing xlsx files.
 # ------------------------------------------------------------------
-# Defined once, reused by SYSTEM_PROMPT and the re-anchor prompt so the
-# model never sees two disagreeing icon lists.
-ICON_CONVENTION = ('''Icon = the dominant driver of the week:
-    💥 for war, 
-    💵 for the FED, 
-    ⚠️ for macro economic data (like US inflation and unemployment),
-    🇪🇺 for the ECB,
-    🇺🇸 for USA, 🇮🇹 for Italy, 🇨🇳 for China, 🇷🇺 for Russia, 🇮🇷 for Iran (and other countries by their flag).'''
-)
 
-# No hardcoded storyline/dates here on purpose — those go stale (e.g. a
-# past "next ECB meeting" date left in forever). Ground truth for CURRENT
-# events comes from market_context(), which splices in the latest hand-
-# written row of macro.xlsx on every call.
 SYSTEM_PROMPT = (
     "You are a fixed-income market analyst assisting with a weekly "
     "candlestick chart of the Italian BTP 4.5% Oct-2053 bond (price "
