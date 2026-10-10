@@ -33,7 +33,7 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 ICON_CONVENTION = ('''Icon = the dominant driver of the week:
     💥 for war, 
     💵 for the FED, 
-    ⚠️ for macro economic data (like US inflation and unemployment),
+    ⚠️ for macro economic data (like US inflation, unemployment, oil, gold...),
     🇪🇺 for the ECB,
     🇺🇸 for USA, 🇮🇹 for Italy, 🇨🇳 for China, 🇷🇺 for Russia, 🇮🇷 for Iran (and other countries by their flag).'''
 )
