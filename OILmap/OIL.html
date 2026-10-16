@@ -53,6 +53,7 @@
   .country { stroke-width: calc(1px / var(--k, 1)); }
   .country.selected { stroke-width: calc(1.6px / var(--k, 1)); }
   .route { stroke-width: calc(1.7px / var(--k, 1)); }
+  #refinedMap .route.announced { stroke-dasharray: calc(8px / var(--k, 1)) calc(5px / var(--k, 1)); }
   .route.dashed { stroke-dasharray: calc(4px / var(--k, 1)) calc(3px / var(--k, 1)); }
 
   .route { transition: opacity .15s ease; cursor:pointer; }
@@ -142,7 +143,7 @@
 
 <div id="tooltip"></div>
 
-<footer>Data as of ~Sept 2026, see <code>crude.xlsx</code>, <code>refined.xlsx</code> and <code>fields.xlsx</code> for full sourcing, percentages, and routing notes behind every figure shown here.</footer>
+<footer>Baseline data ~Sept 2026; Russian diesel announcement updated Oct 11, 2026. See <code>crude.xlsx</code>, <code>refined.xlsx</code> and <code>fields.xlsx</code> for full sourcing, percentages, and routing notes behind every figure shown here.</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
@@ -176,7 +177,7 @@ d3.selectAll('.type-btn').on('click', function(){
    ============================================================ */
 
 const groups = [
-  { key:'me',  name:'Middle East (Iran, Saudi Arabia, Iraq)', color:'#3fa34d', stroke:'#245e2c', desc:'Medium-heavy, sulfuric (sour) crude.' },
+  { key:'me',  name:'Middle East (Iran, Saudi Arabia, Iraq, UAE)', color:'#3fa34d', stroke:'#245e2c', desc:'Light to heavy, mostly sour crude; includes UAE Murban and Upper Zakum.' },
   { key:'usa', name:'USA', color:'#eda100', stroke:'#8a5f00', desc:'Light crude, golden color, thin and flows easily.', benchmark:'WTI' },
   { key:'can', name:'Canada', color:'#eda100', stroke:'#8a5f00', hatch:true, desc:'Light-medium; linked to but distinct from the US system.' },
   { key:'ven', name:'Venezuela', color:'#2a78d6', stroke:'#0c447c', desc:'Extra-heavy crude, very dark, extremely thick.' },
@@ -209,6 +210,9 @@ const countryInfo = {
   'Iraq': { group:'me', note:'Basrah crude, medium-heavy/sour. Routed via Suez.',
     exports:[{to:'China',pct:35},{to:'EU',pct:20},{to:'India',pct:15},{to:'USA',pct:5},{to:'Other Asia',pct:25}],
     imports:[{from:'None',pct:0}] },
+  'United Arab Emirates': { group:'me', note:'ADNOC crude exports, including Murban and Upper Zakum, mainly to Asia. Gulf terminals use Hormuz; the Habshan–Fujairah pipeline bypasses it. Destination shares are project estimates; crude imports are not separately tracked.',
+    exports:[{to:'Japan',pct:35},{to:'China',pct:25},{to:'India',pct:20},{to:'South Korea',pct:10},{to:'Other',pct:10}],
+    imports:[{from:'Not tracked',pct:0}] },
   'United States of America': { group:'usa', note:'Net crude importer — imports more crude than it exports (the reverse of refined products). Exports ship via Panama Canal / Cape of Good Hope.',
     exports:[{to:'EU',pct:25},{to:'South Korea',pct:15},{to:'India',pct:10},{to:'UK',pct:10},{to:'China',pct:5},{to:'Other',pct:35}],
     imports:[{from:'Canada',pct:55},{from:'Mexico',pct:12},{from:'Venezuela',pct:10},{from:'Saudi Arabia',pct:6},{from:'Brazil',pct:3},{from:'Other',pct:14}] },
@@ -316,7 +320,7 @@ const euMemberCountries = new Set([
 ]);
 
 const chokepoints = [
-  {name:'Strait of Hormuz', control:'Iran (north shore) and Oman (Musandam, south shore) — the shipping lanes run through Omani waters.', c:[56.25,26.6], detail:'Gulf crude (Iran, Iraq, Saudi Arabia) heading to Asia, Europe and the US.'},
+  {name:'Strait of Hormuz', control:'Iran (north shore) and Oman (Musandam, south shore) — the shipping lanes run through Omani waters.', c:[56.25,26.6], detail:'Gulf crude (Iran, Iraq, Saudi Arabia, UAE) heading to Asia, Europe and the US.'},
   {name:'Bab-el-Mandeb', control:'Yemen (east shore) and Djibouti (west shore), with Eritrea nearby. Houthi forces on Yemen’s Red Sea coast have attacked shipping since late 2023.', c:[43.4,12.6], dy:4, dx:-100, detail:'Red Sea entrance — Basrah crude heading for Suez, Europe and the US; Russian Urals heading to India.'},
   {name:'Suez Canal', control:'Egypt — run by the Suez Canal Authority.', c:[32.3,30.5], dy:16, dx:-6, detail:'Saudi (from Yanbu on the Red Sea) and Iraqi crude heading to the EU and the Americas; Russian Urals heading to India.'},
   {name:'Strait of Malacca', control:'Malaysia, Indonesia and Singapore, which patrol it jointly.', c:[100.5,3.5], detail:'Gulf crude to China, Japan and South Korea — plus Atlantic cargoes that came round the Cape.'},
@@ -329,6 +333,7 @@ const chokepoints = [
 const originLabels = [
   {name:'Iran (exports)', c:[53,32], dy:-12, dx:14},
   {name:'Saudi Arabia (exports)', c:[45,24], dy:14},
+  {name:'UAE (exports)', c:[54,24], dx:24, dy:4},
   {name:'Iraq (exports)', c:[44,33], dy:-14, dx:-30},
   {name:'USA (imports/exports)', c:[-102,31], dy:-8},
   {name:'Canada', c:[-97,55], dy:-8},
@@ -364,6 +369,10 @@ const destLabels = [
    from / to = country names (topology names, or 'EU') the arrow connects —
    used by click-a-country isolation. */
 const routes = [
+  {pts:[[54, 24], [56.25, 26.6], [59, 21], [80, 6], [100.5, 3.5], [110, 10], [139, 36]], group:'me', dash:false, bend:8, from:['United Arab Emirates'], to:['Japan'], label:'UAE → Japan', detail:"~35% of UAE crude exports (project estimate). Representative Gulf-terminal route via Hormuz and Malacca. Murban loaded at Fujairah bypasses Hormuz; this arrow does not represent that bypass."},
+  {pts:[[54, 24], [56.25, 26.6], [59, 21], [80, 6], [100.5, 3.5], [110, 10], [108, 34]], group:'me', dash:false, bend:6, from:['United Arab Emirates'], to:['China'], label:'UAE → China', detail:"~25% of UAE crude exports (project estimate). Representative Gulf-terminal route via Hormuz and Malacca. Murban loaded at Fujairah bypasses Hormuz; this arrow does not represent that bypass."},
+  {pts:[[54, 24], [56.25, 26.6], [59, 21], [78, 21]], group:'me', dash:false, bend:4, from:['United Arab Emirates'], to:['India'], label:'UAE → India', detail:"~20% of UAE crude exports (project estimate). Representative Gulf-terminal route via Hormuz. Murban loaded at Fujairah bypasses Hormuz; this arrow does not represent that bypass."},
+  {pts:[[54, 24], [56.25, 26.6], [59, 21], [80, 6], [100.5, 3.5], [110, 10], [128, 36.5]], group:'me', dash:false, bend:12, minor:true, from:['United Arab Emirates'], to:['South Korea'], label:'UAE → South Korea', detail:"~10% of UAE crude exports (project estimate). Representative Gulf-terminal route via Hormuz and Malacca. Murban loaded at Fujairah bypasses Hormuz; this arrow does not represent that bypass."},
   {pts:[[53,32],[56.25,26.6],[108,34]], group:'me', dash:false, bend:20, via:['Strait of Malacca'], from:["Iran"], to:["China"], label:'Iran → China', detail:'~91% of Iran’s exports. Via the Strait of Hormuz.'},
   {pts:[[45,24],[32.3,30.5],[15,48]], group:'me', dash:false, bend:12, from:["Saudi Arabia"], to:["EU"], label:'Saudi Arabia → EU', detail:'Via the Suez Canal.'},
   {pts:[[44,33],[32.3,30.5],[15,48]], group:'me', dash:false, bend:16, via:['Strait of Hormuz', 'Bab-el-Mandeb'], from:["Iraq"], to:["EU"], label:'Iraq → EU', detail:'Basrah crude, via Hormuz, Bab-el-Mandeb and the Suez Canal — the short route; since the Red Sea attacks many cargoes go round the Cape instead (dotted arrow, shown when Iraq or a chokepoint is selected).'},
@@ -443,6 +452,7 @@ const routes = [
 ];
 
 const destGlow = [
+  {c:[139,36], group:'me'},{c:[78,21], group:'me'},{c:[128,36.5], group:'me'},
   {c:[108,34], group:'me'},{c:[108,34], group:'rus'},{c:[108,34], group:'ven'},
   {c:[15,48], group:'usa'},{c:[128,36.5], group:'usa'},
   {c:[-102,31], group:'ven'},{c:[78,21], group:'rus'},
@@ -851,7 +861,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
 const groups = [
   { key:'usa',  name:'USA', color:'#eda100', stroke:'#8a5f00', desc:'Gasoline & diesel from the Gulf Coast — the world’s biggest refined exporter.' },
   { key:'ind',  name:'India', color:'#9b6dd6', stroke:'#553584', desc:'Jamnagar, the largest refining complex on Earth — diesel and jet fuel.' },
-  { key:'rus',  name:'Russia', color:'#e34948', stroke:'#8a1f1e', desc:'Diesel/gasoil, rerouted away from the EU after the 2023 product embargo.' },
+  { key:'rus',  name:'Russia', color:'#e34948', stroke:'#8a1f1e', desc:'Diesel/gasoil, rerouted away from the EU after the 2023 product embargo. US diesel supply announced Oct 9, 2026.' },
   { key:'gulf', name:'Gulf refiners (Saudi Arabia, Kuwait, UAE)', color:'#3fa34d', stroke:'#245e2c', desc:'New mega-refineries: Jazan, Al-Zour, Ruwais.' },
   { key:'sgp',  name:'Singapore', color:'#2bb3a3', stroke:'#15665c', desc:'Asia-Pacific refining, blending and trading hub — imports to re-export.' },
   { key:'ara',  name:'ARA hub (Netherlands, Belgium)', color:'#4cb5e8', stroke:'#1d6790', desc:'Amsterdam-Rotterdam-Antwerp: Europe’s blending and re-export hub.' },
@@ -867,13 +877,13 @@ const groupByKey = Object.fromEntries(groups.map(g=>[g.key,g]));
    are this project's estimates (see the sheet's Basis column).
    group:null = importer only, drawn in the neutral land color. */
 const countryInfo = {
-  'United States of America': { group:"usa", note:"Gulf Coast refineries — the world’s biggest refined-product exporter.",
+  'United States of America': { group:"usa", note:"Gulf Coast refineries — the world’s biggest refined-product exporter. Oct 9, 2026: announced Russia → USA diesel supply. OFAC GL 135 permits Russian diesel imports through 12:01 a.m. EDT April 7, 2027. Delivered US volumes and trade share are unconfirmed; percentages below retain the September baseline.",
     exports:[{to:"Mexico",pct:20},{to:"Other Latin America",pct:25},{to:"EU",pct:12},{to:"Canada",pct:8},{to:"Asia",pct:10},{to:"Israel",pct:1},{to:"Other",pct:24}],
     imports:[{from:"Canada",pct:45},{from:"ARA hub (Netherlands)",pct:12},{from:"South Korea",pct:8},{from:"India",pct:6},{from:"Other",pct:29}] },
   'India': { group:"ind", note:"Jamnagar (Reliance) — the largest refining complex on Earth.",
     exports:[{to:"EU",pct:25},{to:"Africa",pct:18},{to:"Singapore",pct:12},{to:"UAE",pct:10},{to:"Australia",pct:8},{to:"USA",pct:7},{to:"Other Asia",pct:20}],
     imports:[{from:"UAE",pct:30},{from:"Saudi Arabia",pct:25},{from:"Qatar",pct:15},{from:"USA",pct:10},{from:"Other",pct:20}] },
-  'Russia': { group:"rus", note:"Diesel rerouted away from the EU after the Feb 2023 product embargo.",
+  'Russia': { group:"rus", note:"Diesel rerouted away from the EU after the Feb 2023 product embargo. Oct 9, 2026: announced Russia → USA diesel supply. OFAC GL 135 permits Russian diesel imports through 12:01 a.m. EDT April 7, 2027. Delivered US volumes and trade share are unconfirmed; percentages below retain the September baseline.",
     exports:[{to:"Turkey",pct:25},{to:"Africa",pct:22},{to:"Asia (incl. UAE transshipment)",pct:20},{to:"Brazil",pct:12},{to:"Israel",pct:1},{to:"Other / undisclosed",pct:20}],
     imports:[{from:"None",pct:0}] },
   'Saudi Arabia': { group:"gulf", note:"Jazan (Red Sea) and SATORP/YASREF mega-refineries.",
@@ -1006,6 +1016,8 @@ const destLabels = [
    click-a-country isolation; empty when the end isn't a tracked country.
    Mirrors the "Export flows" sheet in refined.xlsx. */
 const routes = [
+  {pts:[[29,60],[20,58],[14,55],[11,56],[10,59],[-5,60],[-35,52],[-65,43],[-74,40.5]], group:'rus', dash:false, announced:true, bend:4, via:['Danish Straits'], from:['Russia'], to:['United States of America'], label:'Russia → USA (diesel — announced Oct 9, 2026)', detail:'Announced diesel supply to the US and global markets. OFAC GL 135, issued Oct 9, permits Russian-origin diesel imports into the US through 12:01 a.m. EDT April 7, 2027. US-delivered volume and trade share are unconfirmed. Baltic → Danish Straits → US East Coast is an illustrative route; loading and discharge ports are not confirmed. This is diesel-specific, not a general reopening of all Russian petroleum imports.'},
+
   // USA
   {pts:[[-95,29.5],[-100,21]], group:'usa', dash:false, bend:-6, from:["United States of America"], to:["Mexico"], label:'USA → Mexico', detail:'~20% of US refined exports — the single largest destination. Gasoline & diesel by tanker, pipeline and rail.'},
   {pts:[[-95,29.5],[-79.5,9],[-77,-12]], group:'usa', dash:false, bend:6, from:["United States of America"], to:[], label:'USA → Pacific Latin America (Panama Canal)', detail:'Peru, Chile, Ecuador and Central America — part of the ~25% going to Latin America.'},
@@ -1060,6 +1072,7 @@ const routes = [
 ];
 
 const destGlow = [
+  {c:[-74,40.5], group:'rus'},
   {c:[15,48], group:'usa'},{c:[15,48], group:'ind'},{c:[15,48], group:'gulf'},{c:[15,48], group:'ara'},{c:[15,48], group:'rus'},
   {c:[-100,21], group:'usa'},{c:[-77,-12], group:'usa'},
   {c:[-45,-20], group:'usa'},{c:[-45,-20], group:'rus'},
@@ -1284,6 +1297,7 @@ const lineKey = legend.append('div').attr('class','line-key');
 lineKey.append('span').attr('class','legend-title').text('ROUTES:');
 lineKey.selectAll('.line-key-row').data([
   {dash:null,  text:'<b>Solid</b> — direct tanker route'},
+  {dash:'8 5', text:'<b>Long dashed</b> — announced diesel supply; deliveries and ports unconfirmed'},
   {dash:'4 3', text:'<b>Dotted</b> — indirect flow (re-export, blending / transshipment) or inland barge / pipeline'}
 ]).join('div')
   .attr('class','line-key-row')
@@ -1337,6 +1351,7 @@ d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(w
   zoomLayer.append('g').selectAll('path').data(routes).join('path')
     .attr('class','route')
     .classed('dashed', d => d.dash)
+    .classed('announced', d => !!d.announced)
     .attr('d',d=>curvePath(d.pts,d.bend)).attr('fill','none')
     .attr('stroke',d=>groupByKey[d.group].color).attr('stroke-width',1.7)
     .attr('stroke-dasharray',d=>d.dash?'4 3':null).attr('opacity',0.95)

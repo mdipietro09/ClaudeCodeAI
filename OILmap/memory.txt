@@ -450,3 +450,27 @@ ExxonMobil…)" so it doesn't count). No stripes/hatching (user rule).
   inflated by counting whole basins (Permian, Athabasca) under the
   Sister-first rule; several partner % unknown.
 - Re-verify figures periodically.
+
+## UAE addition (2026-10-11)
+CRUDE now includes United Arab Emirates in the green Middle East group,
+with UAE (exports) label and four routes to Japan/China/India/South Korea.
+Export shares 35/25/20/10 plus Other 10 are project estimates; imports are
+Not tracked/0 (placeholder, not measured zero). Buyer import mixes retain
+UAE inside Other. Korea route is minor; the other three are always visible.
+Routes represent Gulf terminals via Hormuz (East Asia also Malacca); the
+tooltips explain that the Habshan–Fujairah pipeline bypasses Hormuz.
+Group description now includes lighter UAE grades. crude.xlsx updated in
+all five sheets. Crude routes: 77; Export flows sheet: 78 data rows.
+
+## Russian diesel announcement (2026-10-11)
+REFINED: added Russia -> USA diesel, announced Oct 9, 2026. Verified OFAC
+GL 135 explicitly allows US imports until 12:01 a.m. EDT Apr 7, 2027:
+https://ofac.treasury.gov/media/937216/download?inline=
+Route announced:true uses a refined-only long-dash style and legend key.
+Baltic/Danish Straits/US East Coast routing is illustrative, not confirmed.
+Country notes explain the announcement; existing percentage lists remain
+September baseline because actual US delivery volumes/shares are unknown.
+No numeric percentage invented. All five refined.xlsx sheets updated.
+Refined now has 43 route segments and 41 Export flows rows. Footer notes
+the Oct 11 diesel update separately from baseline data. This verified
+announcement is distinct from the project scenario described above.

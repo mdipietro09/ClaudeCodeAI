@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinfolk · Your family tree</title>
+<style>
+:root{color-scheme:dark;--ink:#e8e8e8;--muted:#999;--line:#343434}*{box-sizing:border-box}body{margin:0;background:#000;color:var(--ink);font:14px/1.5 system-ui,sans-serif}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer;background:#141414;border:1px solid var(--line);border-radius:7px;padding:8px 12px}button:hover{background:#252525;border-color:#666}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #ccc;outline-offset:3px}.toolbar{position:fixed;top:16px;right:16px;display:flex;gap:5px;z-index:2}.toolbar button{font-size:12px}.canvas{height:100vh;height:100dvh;overflow:auto;background:#000;position:relative}.stage{position:relative;min-width:100%;transform-origin:top left}svg{position:absolute;inset:0;pointer-events:none}.card{position:absolute;width:180px;height:100px;background:#111;border:1px solid #444;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:12px}.card.selected{border-color:#eee}.card strong{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.card small{font-size:11px;color:var(--muted)}.avatar{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#272727;color:#ccc;font-size:11px}.empty{position:absolute;inset:0;display:grid;place-items:center}.details{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);padding:14px 18px;border:1px solid var(--line);border-radius:10px;background:#141414;display:flex;align-items:center;gap:24px;z-index:2}.details[hidden]{display:none}.details h3{font-size:14px;margin:0;font-weight:500}.details p{font-size:12px;color:var(--muted);margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto}.actions{display:flex;gap:6px}.actions button{white-space:nowrap;font-size:12px}.danger{color:#edaaa1}dialog{border:1px solid var(--line);border-radius:12px;padding:25px;width:490px;max-width:calc(100vw - 30px);max-height:90dvh;background:#141414;color:var(--ink)}dialog::backdrop{background:#000b}h2{font-size:20px;font-weight:500;margin:0 0 12px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}label{display:block;font-size:12px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:#090909;padding:10px;margin-top:5px}select[multiple]{height:90px}.help{font-size:11px;color:var(--muted);margin:5px 0}.form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.primary{background:#ddd;color:#111}.primary:hover{background:#fff}#toast{position:fixed;top:65px;left:50%;transform:translateX(-50%);background:#252525;color:#eee;padding:12px 20px;border-radius:8px;z-index:5;max-width:90vw}#toast:empty{display:none}@media(max-width:600px){.toolbar{top:10px;right:10px}.details{flex-direction:column;gap:12px;align-items:flex-start}.details .actions{flex-wrap:wrap}}
+
+.avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}.card .avatar{width:34px;height:34px;flex-shrink:0}.photo-controls{display:flex;gap:12px;align-items:center;margin-top:10px}.photo-controls img{width:64px;height:64px;object-fit:cover;border-radius:50%}.photo-controls[hidden]{display:none}.social-link{color:#ddd;font-size:12px}button:disabled{opacity:.5;cursor:wait}
+</style>
+</head>
+<body>
+<main aria-label="Family tree">
+<div class="toolbar" aria-label="Tree controls"><button id="import" title="Import backup" aria-label="Import backup">↑</button><button id="export" title="Export backup" aria-label="Export backup">↓</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-reset" title="Reset zoom">100%</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="add" aria-label="Add person" title="Add person">+ Person</button></div>
+<div class="canvas" id="canvas"><div id="stage" class="stage"></div></div>
+<section class="details" id="details" aria-label="Selected person"></section>
+</main>
+<dialog id="editor"><form id="person-form"><h2 id="editor-title">Add a person</h2><div class="form-grid"><label class="full">Full name *<input id="name" required maxlength="100" autocomplete="name"></label><label class="full">Social media link<input id="social" type="url" maxlength="2000" placeholder="https://instagram.com/username"></label><div class="full"><label>Picture<input id="photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="photo-help"></label><p class="help" id="photo-help">JPG, PNG, WebP or GIF, up to 10 MB. Saved as a small still photo.</p><div class="photo-controls" id="photo-controls" hidden><img id="photo-preview" alt="Selected picture"><button id="remove-photo" type="button">Remove picture</button></div><p class="help" id="photo-status" role="status"></p></div><label>Birth year<input id="birth" type="number" min="1" max="9999" placeholder="e.g. 1985"></label><label>Death year (optional)<input id="death" type="number" min="1" max="9999"></label><label class="full">Parents<select id="parents" multiple aria-describedby="parent-help"></select><div class="help" id="parent-help">Hold Ctrl (Windows) or ⌘ (Mac) to select or deselect multiple people.</div></label><label class="full">Children<select id="children" multiple aria-describedby="children-help"></select><div class="help" id="children-help">Hold Ctrl (Windows) or ⌘ (Mac) to select or deselect multiple people.</div></label><label class="full">Partners<select id="partners" multiple></select></label><label class="full">Notes<textarea id="notes" rows="3" maxlength="4000" placeholder="A hometown, a memory, a small piece of their story…"></textarea></label></div><div class="form-actions"><button type="button" id="cancel">Cancel</button><button id="save-person" type="submit" class="primary">Save person</button></div></form></dialog>
+<input id="file" type="file" accept="application/json,.json" hidden><div id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), KEY='kinfolk-family-v1';
+let people=[],selected=null,editing=null,zoom=1,saveFailed=false,draftPhoto='',photoVersion=0,photoBusy=false;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initials=n=>n.trim().split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase();
+const dates=p=>p.birth||p.death?`${p.birth||'?'}${p.death?' – '+p.death:''}`:'Dates to be added';
+function notify(message){$('toast').textContent=message;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('toast').textContent='',4500)}
+function socialURL(value){
+ if(value==null||value==='')return '';
+ if(typeof value!=='string'||value.length>2000)throw Error('Invalid social media link.');
+ let url;try{url=new URL(value.trim())}catch{throw Error('Enter a full social media URL starting with https://.');}
+ if(!['https:','http:'].includes(url.protocol))throw Error('Social media links must start with https:// or http://.');
+ return url.href;
+}
+function photoData(value){
+ if(value==null||value==='')return '';
+ if(typeof value!=='string'||value.length>200000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value))throw Error('Invalid picture in backup.');
+ return value;
+}
+function updatePhotoPreview(){
+ $('photo-controls').hidden=!draftPhoto;
+ if(draftPhoto)$('photo-preview').src=draftPhoto;else $('photo-preview').removeAttribute('src');
+ $('save-person').disabled=photoBusy;
+}
+async function readPhoto(file){
+ if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type))throw Error('Choose a JPG, PNG, WebP or GIF image.');
+ if(file.size>10*1024*1024)throw Error('Choose a picture smaller than 10 MB.');
+ const url=URL.createObjectURL(file);
+ try{
+  const img=new Image();img.src=url;await img.decode();
+  const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+  const ctx=canvas.getContext('2d'),size=Math.min(img.naturalWidth,img.naturalHeight);
+  if(!size||!ctx)throw Error('Unable to read this picture.');
+  ctx.fillStyle='#111';ctx.fillRect(0,0,256,256);
+  ctx.drawImage(img,(img.naturalWidth-size)/2,(img.naturalHeight-size)/2,size,size,0,0,256,256);
+  return canvas.toDataURL('image/jpeg',.8);
+ }finally{URL.revokeObjectURL(url)}
+}
+$('photo').onchange=async e=>{
+ const file=e.target.files[0];if(!file)return;
+ const version=++photoVersion;photoBusy=true;$('photo-status').textContent='Preparing picture…';updatePhotoPreview();
+ try{const data=await readPhoto(file);if(version!==photoVersion)return;draftPhoto=data;$('photo-status').textContent='Picture ready.';}
+ catch(err){if(version===photoVersion)$('photo-status').textContent=err.message;}
+ finally{if(version===photoVersion){photoBusy=false;$('photo').value='';updatePhotoPreview();}}
+};
+$('remove-photo').onclick=()=>{photoVersion++;photoBusy=false;draftPhoto='';$('photo').value='';$('photo-status').textContent='';updatePhotoPreview()};
+$('editor').addEventListener('close',()=>{photoVersion++;photoBusy=false});
+function validate(data){
+ if(!Array.isArray(data)||data.length>2000)throw Error('Choose a family backup with up to 2,000 people.');
+ const ids=new Set();for(const p of data){if(!p||typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||!p.name.trim()||p.name.length>100||!Array.isArray(p.parents)||!Array.isArray(p.partners))throw Error('This backup contains invalid people.');ids.add(p.id);for(const y of [p.birth,p.death])if(y!==''&&y!=null&&(!/^\d{1,4}$/.test(String(y))||Number(y)<1))throw Error('Invalid year in backup.');if(p.birth&&p.death&&Number(p.death)<Number(p.birth))throw Error('Death year must follow birth year.');if(p.notes!=null&&typeof p.notes!=='string')throw Error('Invalid notes in backup.');}
+ for(const p of data)for(const id of [...p.parents,...p.partners])if(typeof id!=='string'||!ids.has(id)||id===p.id)throw Error('A relationship points to an invalid person.');
+ const map=new Map(data.map(p=>[p.id,p])),visiting=new Set(),done=new Set();function visit(id){if(visiting.has(id))throw Error('Parent relationships cannot form a loop.');if(done.has(id))return;visiting.add(id);map.get(id).parents.forEach(visit);visiting.delete(id);done.add(id)}data.forEach(p=>visit(p.id));
+ const clean=data.map(p=>({id:p.id,name:p.name.trim(),birth:String(p.birth||''),death:String(p.death||''),notes:(p.notes||'').slice(0,4000),social:socialURL(p.social),photo:photoData(p.photo),parents:[...new Set(p.parents)],partners:[...new Set(p.partners)]}));
+ for(const p of clean)for(const id of p.partners){const q=clean.find(x=>x.id===id);if(!q.partners.includes(p.id))q.partners.push(p.id)}return clean;
+}
+try{const raw=localStorage.getItem(KEY);if(raw)people=validate(JSON.parse(raw).people)}catch(e){saveFailed=true;notify('Could not load saved data. Import a backup, or export before making changes.')}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({version:1,people}));saveFailed=false}catch(e){saveFailed=true;notify('Browser saving is unavailable. Export a backup to keep your work.')}render()}
+function levels(){const map=new Map(people.map(p=>[p.id,p])),memo=new Map();function depth(id){if(memo.has(id))return memo.get(id);const p=map.get(id);const d=p.parents.length?Math.max(...p.parents.map(depth))+1:0;memo.set(id,d);return d}people.forEach(p=>depth(p.id));return memo}
+function render(){
+ const depth=levels(),groups=[];for(const p of people)(groups[depth.get(p.id)]??=[]).push(p);
+ const width=Math.max($('canvas').clientWidth, ...groups.map(g=>g.length*220+60)),height=Math.max($('canvas').clientHeight,groups.length*180+160),pos=new Map();groups.forEach((g,row)=>g.forEach((p,col)=>pos.set(p.id,{x:(width-g.length*220)/2+col*220+20,y:100+row*180})));
+ let paths='';for(const p of people){const to=pos.get(p.id);for(const id of p.parents){const from=pos.get(id),mid=(from.y+100+to.y)/2;paths+=`<path d="M${from.x+90} ${from.y+100} V${mid} H${to.x+90} V${to.y}" fill="none" stroke="#888" stroke-width="2"/>`}for(const id of p.partners){if(p.id>=id)continue;const from=pos.get(id);paths+=`<path d="M${from.x+90} ${from.y+50} L${to.x+90} ${to.y+50}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="6 5"/>`}}
+ $('stage').style.width=width+'px';$('stage').style.height=height+'px';$('stage').style.zoom=zoom;
+ $('stage').innerHTML=people.length?`<svg width="${width}" height="${height}" aria-hidden="true">${paths}</svg>`+people.map(p=>{const xy=pos.get(p.id);return `<button class="card ${p.id===selected?'selected':''}" data-id="${esc(p.id)}" style="left:${xy.x}px;top:${xy.y}px"><span class="avatar">${p.photo?`<img src="${esc(p.photo)}" alt="">`:esc(initials(p.name))}</span><strong>${esc(p.name)}</strong><small>${esc(dates(p))}</small></button>`}).join(''): '<div class="empty"><button id="first-person">+ Add person</button></div>';
+ const p=people.find(p=>p.id===selected);$('details').innerHTML=p?`<div><h3>${esc(p.name)}</h3>${p.social?`<a class="social-link" href="${esc(p.social)}" target="_blank" rel="noopener noreferrer">Social profile ↗</a>`:''}${p.notes?`<p>${esc(p.notes)}</p>`:''}</div><div class="actions"><button data-action="child">+ Child</button><button data-action="edit">Edit</button><button class="danger" data-action="delete">Delete</button><button data-action="close" aria-label="Close details">×</button></div>`:'';
+ $('details').hidden=!p;
+
+ if($('first-person'))$('first-person').onclick=()=>openEditor();
+}
+function openEditor(id=null,parent=null){editing=id;const p=people.find(x=>x.id===id);$('person-form').reset();photoVersion++;photoBusy=false;draftPhoto=p?.photo||'';$('photo-status').textContent='';updatePhotoPreview();$('editor-title').textContent=p?'Edit person':'Add a person';for(const key of ['name','birth','death','notes','social'])$(key).value=p?.[key]||'';for(const key of ['parents','children','partners'])$(key).innerHTML=people.filter(x=>x.id!==id).map(x=>`<option value="${esc(x.id)}" ${(key==='children'?people.filter(child=>child.parents.includes(id)).map(child=>child.id):(p?.[key]|| (key==='parents'&&parent?[parent]:[]))).includes(x.id)?'selected':''}>${esc(x.name)}</option>`).join('');$('editor').showModal();$('name').focus()}
+$('person-form').onsubmit=e=>{e.preventDefault();if(photoBusy)return;const name=$('name').value.trim();if(!name){$('name').focus();return}const id=editing||('p'+Date.now().toString(36)+Math.random().toString(36).slice(2));const p={id,name,birth:$('birth').value,death:$('death').value,notes:$('notes').value,social:$('social').value,photo:draftPhoto,parents:[...$('parents').selectedOptions].map(o=>o.value),partners:[...$('partners').selectedOptions].map(o=>o.value)};const children=new Set([...$('children').selectedOptions].map(o=>o.value));let next=people.filter(x=>x.id!==id).map(x=>({...x,parents:[...x.parents.filter(v=>v!==id),...(children.has(x.id)?[id]:[])],partners:x.partners.filter(v=>v!==id)}));next.splice(editing?people.findIndex(x=>x.id===id):next.length,0,p);try{next=validate(next)}catch(err){notify(err.message);return}people=next;selected=id;$('editor').close();save()};
+$('cancel').onclick=()=>$('editor').close();$('add').onclick=()=>openEditor();
+$('stage').onclick=e=>{const card=e.target.closest('[data-id]');selected=card?card.dataset.id:null;render()};
+$('details').onclick=e=>{const action=e.target.dataset.action;if(action==='close'){selected=null;render()}if(action==='edit')openEditor(selected);if(action==='child')openEditor(null,selected);if(action==='delete'){const p=people.find(x=>x.id===selected);if(confirm(`Delete ${p.name}? Their relatives will remain, and connections to this person will be removed.`)){people=people.filter(x=>x.id!==selected).map(x=>({...x,parents:x.parents.filter(v=>v!==selected),partners:x.partners.filter(v=>v!==selected)}));selected=null;save()}}};
+function setZoom(n){zoom=Math.max(.4,Math.min(1.6,n));$('zoom-reset').textContent=Math.round(zoom*100)+'%';$('stage').style.zoom=zoom}$('zoom-in').onclick=()=>setZoom(zoom+.1);$('zoom-out').onclick=()=>setZoom(zoom-.1);$('zoom-reset').onclick=()=>setZoom(1);
+$('export').onclick=()=>{const blob=new Blob([JSON.stringify({version:1,people},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='family-tree-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Family backup exported.')};
+$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>50e6)throw Error('Please choose a backup smaller than 50 MB.');const data=JSON.parse(await file.text());const next=validate(data.people);if(people.length&&!confirm('Replace your current tree with this backup? Export your current tree first if you want to keep it.'))return;people=next;selected=null;save();notify('Family tree imported.')}catch(err){notify('Import failed: '+err.message)}finally{$('file').value=''}};
+window.addEventListener('resize',render);render();
+</script>
+</body>
+</html>
